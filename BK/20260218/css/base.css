@@ -1,0 +1,241 @@
+/* --- base.css : 基本レイアウト・共通パーツ --- */
+
+/* 全要素のサイズ計算を「ボーダー込み」にする */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* 画像のドラッグ禁止設定 */
+img {
+  -webkit-user-drag: none;
+  -khtml-user-drag: none;
+  -moz-user-drag: none;
+  -o-user-drag: none;
+
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: none; 
+}
+
+/* 操作が必要な画像は pointer-events を戻す */
+.char-select-icon, .btn img, .preview-char-img .head, .char-select-title-img {
+    pointer-events: auto !important;
+}
+
+:root {
+  --bg-paper: #f3ecd8;
+  --ink-black: #0d0d0d;
+  --border-color: #0d0d0d;
+  --ground: #78350f;
+  --p1-color: #1e3a8a;
+  --p2-color: #b91c1c;
+  --cpu-color: #666666; 
+  --cpu-active-color: #d000ff;
+  --charge-color: #fbbf24;
+  --parry-color: #22d3ee;
+  --aura-yellow: #fbbf24; 
+  --aura-blue: #0f172a;   
+  --purple-obi: #7e22ce;
+}
+
+body { 
+  background-color: var(--bg-paper); 
+  color: var(--ink-black); 
+  font-family: 'Yuji Syuku', serif; 
+  margin: 0; 
+  width: 100vw; height: 100vh;
+  overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 1; 
+  user-select: none; -webkit-user-select: none;
+}
+
+/* ゲームの外枠 */
+#sumo-frame {
+  position: fixed; inset: 0; z-index: 10000;
+  pointer-events: none;
+  border: 16px solid var(--ink-black);
+}
+#sumo-frame::after {
+  content: ""; position: absolute; inset: 4px;
+  border: 4px solid var(--ink-black);
+}
+
+/* 共通スクリーン設定 */
+.screen {
+  position: fixed; inset: 0;
+  background: rgba(243, 236, 216, 0.98);
+  display: none; 
+  flex-direction: column; align-items: center; justify-content: flex-start;
+  padding-top: 40px;
+  z-index: 200;
+}
+.screen.active { display: flex; }
+
+/* ゲーム全体のラッパー */
+#game-wrapper {
+  width: 1240px; height: 900px; 
+  position: relative; display: none;
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 15px; padding: 20px;
+  background: var(--bg-paper);
+  transform-origin: center center;
+}
+
+/* 共通ボタン */
+.btn {
+  padding: 15px 40px; font-size: 1.8rem; font-family: 'Yuji Syuku', serif;
+  background: #fff; border: 4px solid var(--ink-black); border-radius: 8px;
+  cursor: pointer; transition: all 0.1s; box-shadow: none; margin: 10px;
+}
+.btn:hover { transform: translate(-2px, -2px); background: var(--charge-color); }
+.btn:active { transform: translate(2px, 2px); }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; background: #ddd; color: #888; border-color: #888; }
+
+.back-to-top-btn {
+  position: absolute; top: 40px; right: 40px; padding: 10px 20px;
+  font-size: 1.2rem; background: #fff; border: 3px solid var(--ink-black);
+  border-radius: 8px; cursor: pointer; z-index: 300;
+  font-family: 'Yuji Syuku', serif; box-shadow: none;
+}
+
+/* --- アニメーション・エフェクト定義 --- */
+
+/* ロード画面等の点滅 */
+#network-loading-msg {
+    font-size: 2rem; font-weight: 900; color: #555;
+    animation: blinkText 1.0s infinite alternate;
+    margin-top: 50px;
+}
+@keyframes blinkText { from{opacity:0.3;} to{opacity:1;} }
+
+/* フェードインしながら上昇 */
+.fade-in-up {
+    animation: fadeInUp 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* 準備完了時のオーラエフェクト用アニメーション */
+@keyframes pulse-gentle {
+    0% { transform: scale(1.0); }
+    100% { transform: scale(1.02); } /* ほんの少しだけ動く */
+}
+
+/* 吸い込むようなオーラ（オレンジと金の重ねがけ） */
+@keyframes aura-vacuum {
+    0% {
+        filter: drop-shadow(0 0 2px rgba(255, 69, 0, 0.3));
+    }
+    50% {
+        filter: 
+            drop-shadow(0 0 10px rgba(255, 69, 0, 0.8)) 
+            drop-shadow(0 0 20px rgba(255, 215, 0, 0.5));
+    }
+    100% {
+        filter: drop-shadow(0 0 2px rgba(255, 69, 0, 0.3));
+    }
+}
+
+/* 準備完了画像に適用するクラス */
+.ready-aura {
+    cursor: pointer;
+    
+    /* アニメーションは維持しつつ、GPUレイヤーに乗せる */
+    animation: 
+        pulse-gentle 1.2s infinite alternate ease-in-out, 
+        aura-vacuum 2.0s infinite ease-in-out; 
+    
+    transition: transform 0.2s;
+    pointer-events: auto !important;
+    
+    box-shadow: none !important;
+    background: none !important;
+
+    /* ★追加: GPUアクセラレーションを有効化（重要） */
+    will-change: transform;
+    transform: translateZ(0);
+}
+
+.ready-aura:active {
+    transform: scale(0.98);
+    /* filterは重いので、opacityで代用する方が軽いです */
+    /* filter: brightness(0.8); */ 
+    opacity: 0.8; /* ★変更: 軽快なopacityに変更 */
+}
+
+/* --- 取り組み開始時の黒帯演出 --- */
+
+#char-title-container {
+    transition: all 0.5s ease;
+    position: absolute; 
+    /* ★追加: ここもGPUに乗せておく */
+    will-change: transform;
+}
+
+/* 黒帯背景（グラデーション） */
+.torikumi-obi-mode::before {
+    content: "";
+    display: block;
+    position: absolute;
+    top: 49%;
+    left: 0;
+    width: 100%;
+    height: 290px;
+    transform: translateY(-50%) translateZ(0); /* ★変更: translateZ(0)を追加 */
+    
+    /* グラデーション描画は重いので、一度描いたらGPUにキャッシュさせる */
+    background: linear-gradient(
+        to bottom,              
+        rgba(0, 0, 0, 0) 0%,    
+        rgba(0, 0, 0, 0.7) 2%, 
+        rgba(0, 0, 0, 0.7) 98%, 
+        rgba(0, 0, 0, 0) 100%   
+    );
+    
+    z-index: -1; 
+    opacity: 0;
+    animation: fadeInObi 0.5s forwards;
+    
+    /* ★追加: アニメーションするプロパティをブラウザに予告する（劇的に軽くなります） */
+    will-change: transform, opacity;
+}
+
+@keyframes fadeInObi {
+    /* ★変更: scaleXではなくopacityだけ、あるいはtransform全体で動かす */
+    from { opacity: 0; transform: translateY(-50%) scaleX(0.9) translateZ(0); }
+    to { opacity: 1; transform: translateY(-50%) scaleX(1) translateZ(0); }
+}
+
+/* 準備完了時の画像スタイル */
+.torikumi-obi-mode img {
+    height: 180px !important; 
+    width: auto !important;
+    margin-bottom: 15px !important; 
+    position: relative;
+    /* ★追加: 画像の再配置計算を減らす */
+    transform: translateZ(0);
+}
+
+/* 準備完了時のテキストスタイル */
+.torikumi-obi-mode #select-instruction-text {
+    color: #fff !important;
+    background: transparent !important;
+    
+    /* ★変更: 「ぼかし(5px)」は重いので、0px（くっきり影）にするか、削除する */
+    /* text-shadow: 0 2px 5px rgba(0, 0, 0, 0.8); */
+    text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.8); /* ぼかしなしなら軽い */
+    
+    font-size: 1.5rem !important;
+    font-weight: bold !important;
+    position: relative;
+    border: none !important;
+}
+
+
+.preview-char-img .head,
+.preview-char-img .rikishi-body {
+    filter: none !important;
+}

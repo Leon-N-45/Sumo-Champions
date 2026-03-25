@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>スモチャンの遊び方 Ver.18.5</title>
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;800&family=Yuji+Syuku&display=swap" rel="stylesheet">
+<style>
+    :root {
+        --bg-color: #fcfaf2;
+        --accent-red: #d32f2f;
+        --accent-blue: #1976d2;
+        --accent-yellow: #fbbf24;
+        --text-color: #0d0d0d;
+        --card-bg: #fff;
+        --purple-obi: #7e22ce;
+        --ink-black: #0d0d0d;
+        --wafu-red: #c9171e; 
+    }
+    body {
+        font-family: "M PLUS Rounded 1c", sans-serif;
+        background-color: var(--bg-color);
+        color: var(--text-color);
+        margin: 0;
+        padding: 40px 40px 120px 40px;
+        line-height: 2.0;
+        font-size: 24px;
+    }
+    
+    /* 枠組み */
+    #sumo-frame {
+        position: fixed; inset: 0; z-index: 10000;
+        pointer-events: none;
+        border: 16px solid var(--ink-black);
+        box-sizing: border-box;
+    }
+    #sumo-frame::after {
+        content: ""; position: absolute; inset: 4px;
+        border: 4px solid var(--ink-black);
+        box-sizing: border-box;
+    }
+
+    .container {
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+    
+    h1 {
+        font-family: 'Shippori Mincho', serif; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800;
+        text-align: center;
+        font-size: 4.5rem;
+        margin-bottom: 20px;
+        color: #0d0d0d;
+        text-shadow: 2px 2px 0 #ddd;
+        border-bottom: 5px solid #0d0d0d;
+        padding-bottom: 20px;
+    }
+    h2 {
+        background: #0d0d0d;
+        color: #fff;
+        padding: 15px 30px;
+        border-radius: 12px;
+        margin-top: 70px;
+        margin-bottom: 25px;
+        font-size: 2.4rem;
+        font-family: 'Shippori Mincho', serif; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800;
+        box-shadow: 5px 5px 0 rgba(0,0,0,0.2);
+    }
+    h3 {
+        border-bottom: 3px solid #ddd;
+        padding-bottom: 10px;
+        margin-bottom: 25px;
+        font-size: 1.8rem;
+    }
+    h4 {
+        margin-top: 0;
+        font-size: 1.6rem;
+        margin-bottom: 15px;
+    }
+    p {
+        margin-bottom: 1.5rem;
+    }
+    
+    /* カードスタイル */
+    .card {
+        background: var(--card-bg);
+        border: 4px solid #0d0d0d;
+        border-radius: 16px;
+        padding: 35px;
+        margin-bottom: 40px;
+        box-shadow: 8px 8px 0 rgba(0,0,0,0.1);
+    }
+    .card-title {
+        font-weight: 900;
+        font-size: 2rem;
+        margin-bottom: 20px;
+        border-left: 12px solid var(--accent-red);
+        padding-left: 15px;
+        display: flex;
+        align-items: center;
+        line-height: 1.2;
+    }
+
+    /* グリッドレイアウト */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 25px; }
+
+    /* キーボード風アイコン */
+    .key-icon {
+        display: inline-block;
+        border: 3px solid #0d0d0d;
+        background: #fff;
+        border-radius: 8px;
+        padding: 5px 12px;
+        margin: 0 4px;
+        font-family: 'Shippori Mincho', serif; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800;
+        font-weight: 900;
+        font-size: 1.6rem;
+        box-shadow: 0 4px 0 #999;
+        transform: translateY(-2px);
+        min-width: 1.2em;
+        text-align: center;
+    }
+    .key-group {
+        background: #f0f0f0;
+        padding: 25px;
+        border-radius: 16px;
+        text-align: center;
+        border: 3px solid #ccc;
+    }
+
+    /* バッジ */
+    .badge {
+        display: inline-block;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-weight: bold;
+        font-size: 1.4rem;
+        color: #fff;
+        box-shadow: 0 3px 6px rgba(0,0,0,0.2);
+    }
+    .badge-atk { background: var(--accent-red); }
+    .badge-def { background: var(--accent-blue); }
+    .badge-neutral { background: #666; }
+
+    /* 状況別ボックス */
+    .situation-box {
+        background: #fff;
+        border: 3px solid #eee;
+        border-radius: 16px;
+        overflow: hidden;
+        text-align: center;
+        transition: transform 0.2s;
+        box-shadow: 0 5px 0 rgba(0,0,0,0.1);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        height: 100%;
+    }
+    
+    .vs-area {
+        padding: 20px;
+        background: #f9f9f9;
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        border-bottom: 3px dashed #ddd;
+    }
+    .vs-text { font-family: 'Shippori Mincho', serif; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-size: 2rem; color: #aaa; margin: 0 10px; }
+    
+    .result-area { 
+        padding: 30px 20px;
+        flex-grow: 1; 
+        display: flex; 
+        flex-direction: column; 
+        justify-content: flex-start;
+    }
+    .result-title { font-weight: 900; font-size: 2rem; margin-bottom: 10px; line-height: 1.2; }
+    
+    .res-win { color: var(--accent-red); background: #ffebee; }
+    .res-draw { color: #f57f17; background: #fffde7; }
+    .res-lose { color: var(--accent-blue); background: #e3f2fd; }
+
+    /* 戻るボタン */
+    .back-btn {
+        position: fixed;
+        top: 30px;
+        right: 30px;
+        background: #fff;
+        color: #0d0d0d;
+        padding: 15px 35px;
+        text-decoration: none;
+        font-weight: 900;
+        border-radius: 8px;
+        box-shadow: 4px 4px 0 rgba(0,0,0,0.3);
+        border: 4px solid #0d0d0d;
+        font-family: 'Shippori Mincho', serif; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800;
+        font-size: 1.6rem;
+        z-index: 100;
+        transition: all 0.1s;
+    }
+    .back-btn:hover {
+        transform: translate(-2px, -2px);
+        background: var(--accent-yellow);
+        box-shadow: 6px 6px 0 rgba(0,0,0,0.3);
+    }
+    .back-btn:active {
+        transform: translate(2px, 2px);
+        box-shadow: 2px 2px 0 rgba(0,0,0,0.3);
+    }
+
+    /* リストスタイル */
+    ul.detail-list {
+        list-style: none;
+        padding-left: 0;
+        margin: 0;
+    }
+    ul.detail-list li {
+        margin-bottom: 20px;
+    }
+    ul.detail-list li > strong {
+        font-size: 1.4rem;
+        color: var(--accent-red);
+        display: block;
+        margin-bottom: 5px;
+    }
+    
+    ul.detail-list li .desc {
+        display: block;
+        padding-left: 1em; /* インデント */
+        font-size: 1.4rem;
+        color: #333;
+    }
+
+    /* 青枠内の見出し色上書き */
+    .card[style*="accent-blue"] ul.detail-list li > strong {
+        color: var(--accent-blue);
+    }
+
+    /* 一般リスト */
+    ul.action-list { padding-left: 25px; margin: 0; }
+    ul.action-list li { margin-bottom: 15px; font-size: 1.4rem; }
+
+    /* アクション説明リスト */
+    .action-desc-list dt {
+        font-weight: 900;
+        font-size: 1.6rem;
+        margin-bottom: 5px;
+        color: #0d0d0d;
+        border-bottom: 2px solid #ddd;
+        display: inline-block;
+    }
+    .action-desc-list dd {
+        margin-left: 0;
+        margin-bottom: 25px;
+        font-size: 1.4rem;
+        color: #444;
+    }
+    
+    strong { font-weight: 900; }
+    
+    /* 追加クラス：和風レッド */
+    .text-wafu { color: var(--wafu-red); font-weight: 900; }
+
+    /* UI解説用 */
+    .ui-guide-box {
+        border: 3px solid #0d0d0d;
+        background: #f5f5f5;
+        padding: 20px;
+        margin-bottom: 20px;
+        border-radius: 8px;
+    }
+    .ui-row {
+        display: flex;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    .ui-icon {
+        width: 40px; height: 20px;
+        border: 2px solid #000;
+        margin-right: 15px;
+        flex-shrink: 0;
+    }
+
+    @media (max-width: 950px) {
+        .grid-2, .grid-3 { grid-template-columns: 1fr; }
+        h1 { font-size: 3rem; }
+        .back-btn {
+            position: absolute;
+            top: 20px; right: 20px;
+            padding: 10px 20px;
+            font-size: 1.2rem;
+        }
+        body { padding: 80px 15px 100px 15px; font-size: 20px; }
+    }
+</style>
+</head>
+<body>
+
+<div id="sumo-frame"></div>
+
+<a href="index.html" class="back-btn">戻る</a>
+
+<div class="container">
+    <h1>スモチャンの遊び方</h1>
+    
+    <h2>0. スモチャンとは？</h2>
+    <div class="card">
+        <p style="text-align:center; font-size:1.6rem; font-weight:900; line-height:1.6;">
+            スモチャンはたった4つのボタンで楽しめる<br>
+            シンプルかつ奥深い<span class="text-wafu">「デジタル相撲バトル」</span>です！
+        </p>
+        <p style="text-align:center;">
+            「立ち合い」で相手のまわしを取って「寄り」で土俵の外へ押し出しましょう。<br>
+            2P対戦はもちろん、CPUを使って稽古することも可能です。
+        </p>
+    </div>
+
+    <h2>1. 対戦の準備</h2>
+    <div class="card">
+        <h3>キャラクターの選び方</h3>
+        <p style="font-size: 1.5rem; text-align: center; margin-bottom: 30px; font-weight: bold;">
+            中央の<span style="background:#eee; padding:2px 10px; border-radius:4px; border:2px solid #ccc;">顔アイコン</span>をドラッグして、
+            左右の<span style="background:#eee; padding:2px 10px; border-radius:4px; border:2px solid #ccc;">力士の体</span>に乗せると選択完了！
+        </p>
+
+        <div class="grid-2">
+            <div style="background:#e3f2fd; padding:25px; border-radius:12px; border:3px solid #90caf9;">
+                <h4 style="color:var(--accent-blue); font-weight:900;">🔵 P1</h4>
+                左側の青い体です。<br>顔をハメるとステータスが表示されます。
+            </div>
+            <div style="background:#ffebee; padding:25px; border-radius:12px; border:3px solid #ef9a9a;">
+                <h4 style="color:var(--accent-red); font-weight:900;">🔴 P2</h4>
+                右側の赤い体です。<br>
+                <div style="margin-top:15px; background:#fff; padding:15px; border-radius:8px; border:2px dashed #ccc;">
+                    <strong>CPUと戦う</strong><br>
+                    右上のスイッチをONにするとCPU操作に変更できます。<br>一人で練習したい時に使いましょう。
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>パラメータの見方</h3>
+        <p>力士によって得意な戦法（=タイプ）が異なります。</p>
+        
+        <div class="grid-2">
+            <ul class="action-list">
+                <li><span class="text-wafu">チカラ：</span> 攻撃行動の強さやダメージ量に関与します。</li>
+                <li><span class="text-wafu">ギジュツ：</span> チャージの早さや「いなし」の決まりやすさに関与します。</li>
+                <li><span class="text-wafu">ハヤサ：</span> 移動速度や隙の無さに関与します。</li>
+            </ul>
+            <ul class="action-list">
+                <li><span class="text-wafu">タイリョク：</span> その名の通りHPのことです。</li>
+                <li><span class="text-wafu">キモチ：</span> タイリョクが減少した際に全能力が上昇/下降します。</li>
+                <li><span class="text-wafu">ギャクテン：</span> 土俵際に追い詰められた際に全能力が上昇/下降します。</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>ルール設定と開始</h3>
+        
+        <div class="grid-2">
+            <div>
+                <h4>勝負数 (画面下部)</h4>
+                <p>1回の対戦で行う取り組みの数を選べます。</p>
+            </div>
+            <div>
+                <h4>優勝決定戦モード</h4>
+                <p>ON：勝敗数が並んだ場合、2勝差がつくまで延長戦を行います。</p>
+                <p>OFF：勝敗数が並んだ場合、引き分けで終了します。</p>
+            </div>
+        </div>
+
+        <div style="text-align:center; margin-top:40px; background:var(--purple-obi); color:#fff; padding:20px; border-bottom: 6px solid #5b1899; font-weight:900; font-size:1.8rem; letter-spacing:2px;">
+            準備ができたら「TORIKUMI！」を押して対戦開始！
+        </div>
+    </div>
+
+    <h2>2. 操作方法</h2>
+    <div class="card">
+        <p style="text-align:center; font-size:1.6rem; font-weight:bold; margin-bottom:30px;">
+            複雑なコマンドはありません。<br>
+            <span style="background: linear-gradient(transparent 60%, #ffff00 60%);">使うのは「上下左右」の4つだけです！</span>
+        </p>
+
+        <div class="grid-2">
+            <div class="key-group">
+                <div style="font-size:1.8rem; font-weight:900; color:var(--accent-blue); margin-bottom:15px; font-family: 'Shippori Mincho', serif; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800;">P1</div>
+                <div style="margin-bottom:20px;">
+                    <span class="key-icon">Ｗ</span><br>
+                    <div style="display:flex; justify-content:center; gap:5px; margin-top:5px;">
+                        <span class="key-icon">Ａ</span>
+                        <span class="key-icon">Ｓ</span>
+                        <span class="key-icon">Ｄ</span>
+                    </div>
+                </div>
+                <p style="text-align:left; font-size:1.4rem; margin-top:20px; line-height: 2;">
+                    <strong>Ｗ</strong> ： いなし<br>
+                    <strong>Ｓ</strong> ： チャージ<br>
+                    <strong>Ａ / Ｄ</strong> ： 移動・張り手
+                </p>
+            </div>
+
+            <div class="key-group">
+                <div style="font-size:1.8rem; font-weight:900; color:var(--accent-red); margin-bottom:15px; font-family: 'Shippori Mincho', serif; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800; font-weight: 800;">P2</div>
+                <div style="margin-bottom:20px;">
+                    <span class="key-icon">↑</span><br>
+                    <div style="display:flex; justify-content:center; gap:5px; margin-top:5px;">
+                        <span class="key-icon">←</span>
+                        <span class="key-icon">↓</span>
+                        <span class="key-icon">→</span>
+                    </div>
+                </div>
+                <p style="text-align:left; font-size:1.4rem; margin-top:20px; line-height: 2;">
+                    <strong>↑</strong> ： いなし<br>
+                    <strong>↓</strong> ： チャージ <br>
+                    <strong>← / →</strong> ： 移動・張り手
+                </p>
+            </div>
+        </div>
+
+        <div style="margin-top: 40px; padding: 20px; background: #fafafa; border-radius: 12px; border: 3px solid #ddd;">
+            <h3 style="border-bottom:none; margin-bottom:20px;">🎮 アクション詳細</h3>
+            <dl class="action-desc-list">
+                <dt>移動・張り手（左右）</dt>
+                <dd>左右に移動します。入力中に相手と接触すると「張り手」や「寄り」に派生します。</dd>
+
+                <dt>チャージ（下）</dt>
+                <dd>一定数を溜めることで技が使えます。実は防御としても使えます。</dd>
+
+                <dt>いなし（上）</dt>
+                <dd>相手の攻撃を回避します。タイミングよく相手が押してきた時に使うと体勢を入れ替えて有利になります。が、失敗すると大きな隙をさらします。</dd>
+            </dl>
+        </div>
+
+        <hr style="margin: 40px 0; border: none; border-top: 3px dashed #ddd;">
+        
+       <h3 style="border-bottom:none; margin-bottom:20px;">🔥 技リスト</h3>
+        <p style="margin-bottom:20px;">チャージが溜まった状態で特定の行動をすると発動します！</p>
+        <table style="width:100%; border-collapse: collapse; font-size: 1.4rem;">
+            <tr style="border-bottom:4px solid #333; background:#eee;">
+                <th style="text-align:left; padding:20px; width: 18%; white-space: nowrap;">技名</th>
+                <th style="text-align:left; padding:20px; width: 25%;">発動条件</th>
+                <th style="text-align:left; padding:20px;">効果</th>
+            </tr>
+            <tr style="background:#fff8e1; border-bottom:2px solid #eee;">
+                <td style="padding:20px; font-weight:bold;">ぶちかまし</td>
+                <td style="padding:20px;">チャージ<span style="color:#f57f17; font-weight:bold;">50%</span><br> + 「張り手」</td>
+                <td style="padding:20px;">相手を後方に大きく突き飛ばします。<br>※チャージが100%溜まっていれば2連続で撃てます。<br>※ハヤサが高い力士なら、そのまま「寄り」に繋げることもできます。
+</td>
+            </tr>
+            <tr style="background:#ffebee;">
+                <td style="padding:20px; font-weight:bold; color:#d32f2f;">掴み投げ</td>
+                <td style="padding:20px;">チャージ<span style="color:#d32f2f; font-weight:bold;">100%</span> <br>+ 「いなし」</td>
+                <td style="padding:20px;">相手を掴んで反対方向に豪快に投げ飛ばします。</td>
+            </tr>
+        </table>
+    </div>
+
+    <h2>3. ゲームの流れ</h2>
+    <div class="card">
+        <p>このゲームは、<strong>「離れている時（立ち合い）」</strong>と<strong>「組んでいる時（寄り）」</strong>の2つの状態を行き来して戦います。</p>
+        
+        <div class="grid-2" style="align-items: stretch; text-align: center;">
+            <div style="background:#e3f2fd; padding:30px; border-radius:16px; border:4px solid #bbdefb;">
+                <h3>🖐️ 立ち合い</h3>
+                <p>距離がある状態。<br>相手の隙を見て<strong>まわしを掴め！</strong></p>
+            </div>
+            <div style="background:#ffebee; padding:30px; border-radius:16px; border:4px solid #ffcdd2;">
+                <h3>🫂 寄り（組み）</h3>
+                <p>密着した状態。<br><strong>「押し切る」</strong>か<strong>「技」</strong>で決着を付けろ！</p>
+            </div>
+        </div>
+
+        <div style="padding:20px;">
+            <h3 style="margin-top:0; color:#e65100;">⚠️ 取り組みが始まらない？</h3>
+            
+                「手を着いて…」などが表示された後、<strong>P1・P2両方のプレイヤーがいずれかのボタンを押すまで取り組みは始まりません。</strong><br>
+                両者が準備完了（ボタン入力）した瞬間、「のこった！」の合図で取り組み開始です。
+            </p>
+        </div>
+
+        <div style="padding:20px;">
+            <h3 style="margin-top:0; color:#f57f17;">⚡ 相撲はスピード勝負！</h3>
+            <p style="margin-bottom: 10px; font-weight: bold;">
+                タイリョクは<span style="color:#d32f2f;"> 攻撃を受ける</span>だけでなく <span style="color:#d32f2f;"> 時間経過 </span>でも減っていくぞ！
+            </p><p>相撲にボケっとしている時間なんて無い、とにかく指を動かせ！！</p>
+        </div>
+    </div>
+
+    <h2>4. 「立ち合い」での勝負</h2>
+    <p>ぞれぞれの行動には「じゃんけん」のような関係性があります。</p>
+    
+    <div class="grid-3">
+        <div class="situation-box">
+            <div class="vs-area">
+                <div><span class="badge badge-atk">張り手</span><br><small>自分</small></div>
+                <div class="vs-text">vs</div>
+                <div><span class="badge badge-neutral">無操作</span><br><small>相手</small></div>
+            </div>
+            <div class="result-area res-win">
+                <div class="result-title">⭕ 有利</div>
+                <p>まわしを掴めたので<br><strong>「寄り」</strong>に移行します。</p>
+            </div>
+        </div>
+
+        <div class="situation-box">
+            <div class="vs-area">
+                <div><span class="badge badge-atk">張り手</span><br><small>自分</small></div>
+                <div class="vs-text">vs</div>
+                <div><span class="badge badge-atk">張り手</span><br><small>相手</small></div>
+            </div>
+            <div class="result-area res-draw">
+                <div class="result-title">🔺 互角</div>
+                <p><strong>「かち合い」</strong>発生！<br>お互いダメージを受け、弾き飛ばされます。</p>
+            </div>
+        </div>
+
+        <div class="situation-box">
+            <div class="vs-area">
+                <div><span class="badge badge-atk">張り手</span><br><small>自分</small></div>
+                <div class="vs-text">vs</div>
+                <div><span class="badge badge-def">いなし</span><br><small>相手</small></div>
+            </div>
+            <div class="result-area res-lose">
+                <div class="result-title">❌ 不利</div>
+                <p>くるっと回られ<br>背後を取られてしまいます。</p>
+            </div>
+        </div>
+    </div>
+
+    <h2>5. 「寄り」での攻防</h2>
+    <p>組んだ後は、<strong>「攻め手（組んだ側）」</strong>と<strong>「受け手（組まれた側）」</strong>に分かれます。</p>
+
+    <div class="grid-2">
+        <div class="card" style="border: 4px solid var(--accent-red);">
+            <div class="card-title" style="color:var(--accent-red); border:none;">🔥 攻め手（有利！）</div>
+            <p>勝負を決めにいきましょう！</p>
+            <ul class="detail-list">
+                <li>
+                    <strong>・移動</strong>
+                    <span class="desc">・相手を土俵際まで運びます。</span>
+                </li>
+                <li>
+                    <strong>・チャージ</strong>
+                    <span class="desc">・チャージを溜められます！</span>
+                </li>
+                <li>
+                    <strong>・必殺技（50%〜）</strong>
+                    <span class="desc">・「ぶちかまし」でつき飛ばせ！</span>
+                </li>
+                <li>
+                    <strong>・必殺技（MAX）</strong>
+                    <span class="desc">・「掴み投げ」で反対方向に不意打ちだ！</span>
+                </li>
+            </ul>
+        </div>
+
+        <div class="card" style="border: 4px solid var(--accent-blue);">
+            <div class="card-title" style="color:var(--accent-blue); border:none;">💧 受け手（ピンチ！）</div>
+            <p>耐えて耐えて一発逆転を狙え！</p>
+            <ul class="detail-list">
+                <li>
+                    <strong>・移動</strong>
+                    <span class="desc">・できません（運ばれています）。</span>
+                </li>
+                <li>
+                    <strong>・チャージ</strong>
+                    <span class="desc">・チャージを溜められます！</span>
+                    <span class="desc">・抵抗して相手の足を<span class="text-wafu">遅く</span>します。</span>
+                </li>
+                <li>
+                    <strong>・必殺技（50%〜）</strong>
+                    <span class="desc">・「ぶちかまし」で無理やり脱出！</span>
+                </li>
+                <li>
+                    <strong>・必殺技（MAX）</strong>
+                    <span class="desc">・「掴み投げ」で一発逆転だ！</span>
+                </li>
+            </ul>
+            <div style="background:#e3f2fd; padding:20px; border-radius:12px; font-size:1.4rem; margin-top:20px; border:3px solid #90caf9;">
+                <strong>💡 起死回生の「いなし」</strong><br>
+                相手が寄り中に「ぶちかまし」をする瞬間だけ、<span class="text-wafu">「いなし」</span></strong>でカウンターが可能です！
+            </div>
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>

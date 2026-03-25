@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>スモチャン - 団体戦モード</title>
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/battle.css">
+    <link rel="stylesheet" href="css/ui.css">
+    <link rel="stylesheet" href="css/team.css">
+</head>
+<body>
+    <div id="game-wrapper">
+        <div id="team-select-screen" class="screen active" style="padding: 20px; box-sizing: border-box; width: 100%; height: 100%; background: #222;">
+            <h1 style="color: #fff; text-align: center; margin-bottom: 20px;">団体戦 編成（コスト上限：15）</h1>
+            
+            <div class="team-boards">
+                <div class="team-board p1-board">
+                    <h2 style="text-align: center; margin-bottom: 10px;">PLAYER 1</h2>
+                    <div class="cost-gauge-container">
+                        <div class="cost-label">どすこいパワー: <span id="p1-cost-val">0</span> / 15</div>
+                        <div class="cost-bar-bg"><div id="p1-cost-bar" class="cost-bar"></div></div>
+                    </div>
+                    <div class="team-slots">
+                        <div class="team-slot" id="p1-slot-0" data-player="p1" data-index="0"><div class="slot-label">先鋒</div><div class="slot-empty-text">未選択</div></div>
+                        <div class="team-slot" id="p1-slot-1" data-player="p1" data-index="1"><div class="slot-label">中堅</div><div class="slot-empty-text">未選択</div></div>
+                        <div class="team-slot" id="p1-slot-2" data-player="p1" data-index="2"><div class="slot-label">大将</div><div class="slot-empty-text">未選択</div></div>
+                    </div>
+                </div>
+
+                <div class="team-board p2-board">
+                    <h2 style="text-align: center; margin-bottom: 10px;">PLAYER 2</h2>
+                    <div class="cost-gauge-container">
+                        <div class="cost-label">どすこいパワー: <span id="p2-cost-val">0</span> / 15</div>
+                        <div class="cost-bar-bg"><div id="p2-cost-bar" class="cost-bar"></div></div>
+                    </div>
+                    <div class="team-slots">
+                        <div class="team-slot" id="p2-slot-0" data-player="p2" data-index="0"><div class="slot-label">先鋒</div><div class="slot-empty-text">未選択</div></div>
+                        <div class="team-slot" id="p2-slot-1" data-player="p2" data-index="1"><div class="slot-label">中堅</div><div class="slot-empty-text">未選択</div></div>
+                        <div class="team-slot" id="p2-slot-2" data-player="p2" data-index="2"><div class="slot-label">大将</div><div class="slot-empty-text">未選択</div></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="icon-grid" class="icon-grid" style="margin-top: 30px; justify-content: center;"></div>
+            
+            <div id="drag-ghost" class="drag-ghost" style="display:none;"></div>
+
+            <div style="text-align: center; margin-top: 30px;">
+                <button id="team-start-btn" class="start-btn" disabled style="padding: 15px 40px; font-size: 1.5rem;">いざ、尋常に勝負！</button>
+            </div>
+            <div style="text-align: center; margin-top: 15px;">
+                <a href="index.html" style="color: #aaa; text-decoration: none;">← 個人戦に戻る</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/data.js"></script>
+    <script src="js/settings.js"></script>
+    <script src="js/audio.js"></script>
+    <script src="js/team_ui.js"></script>
+    <script src="js/team_game.js"></script>
+</body>
+</html>
