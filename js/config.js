@@ -41,9 +41,9 @@ const CONFIG = {
     // ■ 物理演算 (PHYSICS_...)
     PHYSICS: {
         GRAVITY: 0.8,
-        // ★変更: 速度を上げたので、滑りすぎないよう摩擦を強く(値を小さく)する
+        // 速度を上げたので、滑りすぎないよう摩擦を強く(値を小さく)する
         FRICTION: 0.75,         // 元 0.85
-        // ★変更: 押し合う力を強くする
+        // 押し合う力を強くする
         PUSH_POWER_BASE: 3.5,   // 元 2
         SCALE_1: 0.75,
         SCALE_2: 0.85,
@@ -54,24 +54,24 @@ const CONFIG = {
 
     // ■ アクション (ACTION_...)
     ACTION: {
-        // ★変更: 基本スピードを大幅アップ（ここがキビキビ感の命）
+        // 基本スピードを大幅アップ（ここがキビキビ感の命）
         SPEED_BASE: 8,        // 元 5 (2.8から倍増以上)
-        
+
         MOVE_BACK_RATE: 0.6,
         SPEED_CHARGING_MOD: 0.3,
         CHARGE_BACK_RATE: 0.1,
-        
-        // ★変更: 衝突時の弾かれ速度を上げ、重さを消す
+
+        // 衝突時の弾かれ速度を上げ、重さを消す
         REBOUND_VELOCITY: 15,   // 元 8
-        
-        // ★変更: 硬直時間を短くして、サクサク動けるようにする
+
+        // 硬直時間を短くして、サクサク動けるようにする
         COOLDOWN_TIME: 40,      // 元 60
         INASHI_DURATION_BASE: 20, // 元 30
         INASHI_TECH_MOD: 2,
         STUMBLE_DURATION: 30,   // 元 45
         STUN_TIME_PUSH: 15,     // 元 20
         STUN_TIME_THROW: 30,    // 元 40
-        
+
         SWAP_DIST_NORMAL: 120,
         SWAP_DIST_SUPER: 250   // ACTION_SWAP_DIST_SUPER
     },
@@ -100,11 +100,11 @@ const CONFIG = {
         INIT: 100,
         MAX_DECAY: 0.05,
         CHARGE_COST: 0.2,
-        
+
         // 待機時間を短縮 (約3.3秒)
         RECOVERY_DELAY: 200,
 
-        //PARRY_COST: 10,
+        // PARRY_COST: 10,
         SWAP_COST_NORMAL: 15,
         MISS_PENALTY: 20,
 
@@ -125,12 +125,16 @@ const CONFIG = {
         BASE_GAIN: 0.5             // CHARGE_BASE_GAIN
     },
 
-    // ■ AIパラメータ (AI_LV...)
+    // ■ AIパラメータ (LV1=幕下 〜 LV7=横綱)
+    //   REACTION:思考間隔(小さいほど速い) / MISTAKE:無駄行動率 / ACCURACY:判断の正確さ / INASHIRATE:いなし精度
     AI: {
-        LV1_ACCURACY: 0.2,
-        LV1_MISTAKE: 0.5,
-        LV1_REACTION: 60,
-        LV1_INASHIRATE: 0.05
+        LV1_REACTION: 64, LV1_MISTAKE: 0.55, LV1_ACCURACY: 0.22, LV1_INASHIRATE: 0.03,
+        LV2_REACTION: 52, LV2_MISTAKE: 0.42, LV2_ACCURACY: 0.35, LV2_INASHIRATE: 0.06,
+        LV3_REACTION: 42, LV3_MISTAKE: 0.32, LV3_ACCURACY: 0.48, LV3_INASHIRATE: 0.11,
+        LV4_REACTION: 32, LV4_MISTAKE: 0.22, LV4_ACCURACY: 0.62, LV4_INASHIRATE: 0.18,
+        LV5_REACTION: 25, LV5_MISTAKE: 0.15, LV5_ACCURACY: 0.74, LV5_INASHIRATE: 0.26,
+        LV6_REACTION: 18, LV6_MISTAKE: 0.09, LV6_ACCURACY: 0.86, LV6_INASHIRATE: 0.34,
+        LV7_REACTION: 9,  LV7_MISTAKE: 0.02, LV7_ACCURACY: 0.97, LV7_INASHIRATE: 0.45
     },
 
     // ■ UI設定 (UI_...)
@@ -140,5 +144,56 @@ const CONFIG = {
         GYOJI_INTERVAL_MIN: 800
     }
 };
+
+/* =========================================================
+   共通ユーティリティ（全スクリプトから利用）
+   ========================================================= */
+
+// CONFIG の値をドット区切りパスで安全に取得する。
+// 指定パスが未定義/null の場合のみ fallback を返す（0 や false はそのまま採用）。
+// 例: cfg('GAME_RULES.HIT_DIST', 100) === (CONFIG.GAME_RULES && CONFIG.GAME_RULES.HIT_DIST) ? ... : 100
+function cfg(path, fallback) {
+    let v = CONFIG;
+    const parts = path.split('.');
+    for (let i = 0; i < parts.length; i++) {
+        if (v == null || v[parts[i]] === undefined || v[parts[i]] === null) return fallback;
+        v = v[parts[i]];
+    }
+    return v;
+}
+
+// スピード(1〜10)に応じたプレビューアニメの再生秒数（力士選択・編成プレビュー共通）
+const SPEED_ANIM_DURATIONS = [1.75, 1.50, 1.35, 1.20, 1.05, 0.90, 0.75, 0.60, 0.45, 0.30];
+function speedAnimDuration(speed) {
+    const idx = Math.max(0, Math.min((speed || 5) - 1, 9));
+    return SPEED_ANIM_DURATIONS[idx];
+}
+
+// タイプ(desc)＋カテゴリから、背景画像ファイル名とタイプアイコン名を決定する。
+// いずれのタイプにも一致しない場合は bg:'' を返す（呼び出し側で必要に応じてフォールバック）。
+function charTypeAssets(charData) {
+    const isLegend = (charData.category === "レジェンド");
+    const desc = charData.desc || "";
+    if (desc.includes('パワー'))     return { bg: isLegend ? 'chikara2_bg.png' : 'chikara1_bg.png', typeImg: 'TypePower.png' };
+    if (desc.includes('スピード'))   return { bg: isLegend ? 'hayasa2_bg.png'  : 'hayasa1_bg.png',  typeImg: 'TypeSpeed.png' };
+    if (desc.includes('テクニック')) return { bg: isLegend ? 'gizyutu2_bg.png' : 'gizyutu1_bg.png', typeImg: 'TypeTech.png' };
+    if (desc.includes('バランス'))   return { bg: isLegend ? 'baransu2_bg.png' : 'baransu1_bg.png', typeImg: 'TypeBalance.png' };
+    return { bg: '', typeImg: 'TypeBalance.png' };
+}
+
+// 力士アイコンを20マスのグリッドへ配置する共通ロジック（slot 指定→残りを空きマスへ補填）
+function buildCharGridSlots() {
+    const gridSlots = new Array(20).fill(null);
+    const unplaced = [];
+    RIKISHI_DATA.forEach(d => {
+            if (d.slot !== null && d.slot >= 0 && d.slot < 20 && gridSlots[d.slot] === null) gridSlots[d.slot] = d;
+            else unplaced.push(d);
+        });
+    let idx = 0;
+    for (let i = 0; i < 20; i++) {
+        if (gridSlots[i] === null && idx < unplaced.length) gridSlots[i] = unplaced[idx++];
+    }
+    return gridSlots;
+}
 
 if (typeof module !== 'undefined') module.exports = CONFIG;

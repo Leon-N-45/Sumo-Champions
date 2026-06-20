@@ -10,8 +10,6 @@
   <link rel="stylesheet" href="css/base.css">
   <link rel="stylesheet" href="css/ui.css">
   <link rel="stylesheet" href="css/battle.css">
-
-  <link rel="stylesheet" href="css/battle.css">
   <link rel="stylesheet" href="css/team.css">
 </head>
 <body>
@@ -49,6 +47,20 @@
                                 <option value="14">14</option>
                                 <option value="15">15</option>
                                 <option value="99">∞</option>
+                            </select>
+                        </div>
+                        <div class="popover-row">
+                            <label>取り組み形式</label>
+                            <select id="team-rule-select" class="custom-select" style="font-size: 1.2rem; padding: 5px;">
+                                <option value="nihon" selected>二本先取</option>
+                                <option value="kachinuki">勝ち抜き</option>
+                            </select>
+                        </div>
+                        <div class="popover-row">
+                            <label>力士の重複</label>
+                            <select id="team-dup-select" class="custom-select" style="font-size: 1.2rem; padding: 5px;">
+                                <option value="off" selected>なし</option>
+                                <option value="on">あり</option>
                             </select>
                         </div>
                     </div>
@@ -89,14 +101,15 @@
       <div id="team-secret-scaling-wrapper" style="width: 1260px; height: 900px; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); transform-origin: center center;">
           
           <div id="secret-title-container" style="position: absolute; top: 55px; width: 100%; text-align: center; z-index: 50;">
-              <div id="secret-instruction-text" class="char-select-desc" style="font-family: 'tamanegi', sans-serif; font-size: 3rem; color: #fff; text-shadow: 3px 3px 0 #000;">
-                  <span id="secret-round-name" style="color:#745399; font-size: 4rem;">先鋒戦</span>： 出場させる力士をこっそりキー入力しろ！
+              <div id="secret-instruction-text" class="char-select-desc" style="font-family: 'tamanegi', sans-serif; color: #fff; text-shadow: 3px 3px 0 #000; text-align: center; line-height: 1.3;">
+                  <div id="secret-round-name" style="color:#745399; font-size: 6rem;">先鋒戦</div>
+                  <div id="secret-instruction-sub" style="font-size: 1.4rem; margin-top: 18px;">出場させる力士をこっそりキー入力しろ！</div>
               </div>
           </div>
 
           <div class="secret-panels-container">
               <div class="secret-panel p1-secret-panel">
-                  <div class="secret-player-label" style="color: var(--p1-color);font-family: 'tamanegi', sans-serif; font-size: 2rem;">1P</div>
+                  <div class="secret-player-label" style="color: var(--p1-color);font-family: 'tamanegi', sans-serif; font-size: 2rem;">東</div>
                   <div id="secret-p1-list" class="secret-char-list"></div>
                   <div id="secret-p1-ready" class="secret-ready-stamp">選出済</div>
               </div>
@@ -104,7 +117,7 @@
               <div class="secret-vs-mark">VS</div>
 
               <div class="secret-panel p2-secret-panel">
-                  <div class="secret-player-label" style="color: var(--p2-color);font-family: 'tamanegi', sans-serif; font-size: 2rem;">2P</div>
+                  <div class="secret-player-label" style="color: var(--p2-color);font-family: 'tamanegi', sans-serif; font-size: 2rem;">西</div>
                   <div id="secret-p2-list" class="secret-char-list"></div>
                   <div id="secret-p2-ready" class="secret-ready-stamp">選出済</div>
               </div>
@@ -113,16 +126,6 @@
   </div>
 
   <div id="toast" class="toast-notification">設定を保存しました</div>
-
-  <div id="confirm-modal">
-      <div class="confirm-box">
-          <div class="confirm-msg">設定を初期化しますか？</div>
-          <div class="confirm-actions">
-              <button class="btn" id="confirm-yes">はい</button>
-              <button class="btn btn-gray" id="confirm-no">いいえ</button>
-          </div>
-      </div>
-  </div>
 
   <div id="start-screen" class="screen active">
     <div id="start-content-wrapper" style="width: 1260px; height: 900px; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); transform-origin: center center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
@@ -147,7 +150,6 @@
     <div class="version-info">© 2026 Okami-chan All Rights Reserved. Ver.19.9.8</div>
   </div>
 
-  <div id="sumo-frame"></div>
   <div id="day-overlay"></div>
   <div id="drag-ghost"></div>
 
@@ -315,7 +317,6 @@
         <div id="p1-stamina-outer" class="stamina-outer">
             <div id="p1-hp-text" class="hp-text">100 / 100</div>
             <div id="p1-bar" class="stamina-inner" style="background:var(--p1-color)"></div>
-            <div id="p1-max-decay" class="stamina-max-fill"></div>
         </div>
         <div class="charge-outer" id="p1-charge-outer"><div id="p1-charge-bar" class="charge-inner"></div></div>
       </div>
@@ -328,7 +329,6 @@
         <div id="p2-stamina-outer" class="stamina-outer">
             <div id="p2-hp-text" class="hp-text">100 / 100</div>
             <div id="p2-bar" class="stamina-inner" style="background:var(--p2-color)"></div>
-            <div id="p2-max-decay" class="stamina-max-fill"></div>
         </div>
         <div class="charge-outer" id="p2-charge-outer"><div id="p2-charge-bar" class="charge-inner" style="float:right;"></div></div>
       </div>
@@ -431,13 +431,12 @@
   <script src="js/team_game.js"></script>
   
   <script>
-    
-    let teamGame = null;
+    // タイトル画面の「団体戦」ボタンから呼ばれる入口
     function startTeamMode() {
-    // window.teamGame に統一してガードを入れる
-    if (!window.teamGame) {
-        window.teamGame = new TeamGameManager();
-    }
+        // window.teamGame に統一してガードを入れる
+        if (!window.teamGame) {
+            window.teamGame = new TeamGameManager();
+        }
 
         // BGMのアンロックと停止処理
         if (typeof SoundFX !== 'undefined') {
@@ -447,12 +446,17 @@
             
             const unlockAudio = (audioObj) => {
                 if (!audioObj) return;
+                const prevVol = audioObj.volume;
+                audioObj.volume = 0; // 無音でアンロック（一瞬のBGM音漏れを防ぐ）
                 const playPromise = audioObj.play();
                 if (playPromise !== undefined) {
                     playPromise.then(() => {
                         audioObj.pause();
                         audioObj.currentTime = 0;
-                    }).catch(() => {});
+                        audioObj.volume = prevVol;
+                    }).catch(() => { audioObj.volume = prevVol; });
+                } else {
+                    audioObj.volume = prevVol;
                 }
             };
             unlockAudio(SoundFX.openingAudio);
@@ -489,7 +493,7 @@
             playTeamSelectBGM();
         }
 
-        // ★修正：存在しない関数を呼ばず、確実にBGMを鳴らす内部関数
+        // 編成画面用BGMを確実に鳴らす内部関数
         function playTeamSelectBGM() {
             if (typeof SoundFX !== 'undefined' && SoundFX.charSelectAudio) {
                 SoundFX.bgmAudio = SoundFX.charSelectAudio;
@@ -502,14 +506,7 @@
         }
     }
 
-    function backToTitleFromTeam() {
-        document.getElementById('team-select-screen').classList.remove('active');
-        document.getElementById('start-screen').classList.add('active');
-        if (typeof SoundFX !== 'undefined') {
-            SoundFX.playOpeningBGM();
-        }
-    }
-
+    // 各画面の 1260x900 基準ラッパーをウィンドウサイズに合わせて拡縮する
     function initFastScale() {
         const baseW = 1260; const baseH = 900; 
         const winW = window.innerWidth - 60; 
@@ -522,9 +519,13 @@
         const selectWrapper = document.getElementById('select-scaling-wrapper');
         if (selectWrapper) selectWrapper.style.transform = `translate(-50%, -50%) scale(${scale})`;
         
-        // ▼追加：団体戦画面もウィンドウサイズに合わせて自動拡縮させる
+        // 団体戦の編成画面も同様に自動拡縮させる
         const teamSelectWrapper = document.getElementById('team-select-scaling-wrapper');
         if (teamSelectWrapper) teamSelectWrapper.style.transform = `translate(-50%, -50%) scale(${scale})`;
+
+        // シークレット選出画面も同様に自動拡縮させる
+        const teamSecretWrapper = document.getElementById('team-secret-scaling-wrapper');
+        if (teamSecretWrapper) teamSecretWrapper.style.transform = `translate(-50%, -50%) scale(${scale})`;
         
         const footer = document.querySelector('.version-info');
         if (footer) {
@@ -539,6 +540,17 @@
         if (typeof settings !== 'undefined') {
             settings.apply();
         }
+    });
+
+    // 相撲形式ポップオーバー：モーダル外（開閉ボタン以外）をクリックしたら閉じる
+    document.addEventListener('click', (e) => {
+        ['format-popover', 'team-format-popover'].forEach((id) => {
+            const pop = document.getElementById(id);
+            if (!pop || !pop.classList.contains('active')) return;
+            if (pop.contains(e.target)) return;
+            if (e.target.closest && e.target.closest('.format-btn')) return;
+            pop.classList.remove('active');
+        });
     });
 
     

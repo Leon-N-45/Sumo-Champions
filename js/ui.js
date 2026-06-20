@@ -1,5 +1,6 @@
 /**
- * UIManager Class
+ * ui.js
+ * 個人戦の画面表示（選択画面・戦闘HUD・演出・BGMモーダル）を担当するクラス
  */
 class UIManager {
     constructor(game) {
@@ -24,7 +25,6 @@ class UIManager {
         this.animTimer = null;
         this.bgmToastTimer = null; // BGMトースト用タイマー
 
-        this._injectP2Styles();
         this.initSelectScreen();
         this.inputSequence = [];
         this.secretCode = ['KeyH', 'KeyI', 'KeyN', 'KeyO'];
@@ -35,73 +35,57 @@ class UIManager {
         this.resize();
     }
 
-    _injectP2Styles() {
-        const style = document.createElement('style');
-        style.innerHTML = `
-            @keyframes spirit-burning-p2-anim {
-                from { transform: scaleX(-1) scale(1); filter: brightness(1); }
-                to { transform: scaleX(-1) scale(1.02); filter: brightness(1.3); }
-            }
-            @keyframes spirit-depressed-p2-anim {
-                0% { transform: scaleX(-1) translate(0, 0); }
-                25% { transform: scaleX(-1) translate(1px, -1px); }
-                50% { transform: scaleX(-1) translate(-1px, 1px); }
-                75% { transform: scaleX(-1) translate(1px, 1px); }
-                100% { transform: scaleX(-1) translate(0, 0); }
-            }
-            .spirit-burning-p2 {
-                box-shadow: 0 0 15px #ff4500, inset 0 0 10px #ff8c00 !important;
-                border: 2px solid #ff4500 !important;
-                animation: spirit-burning-p2-anim 1s infinite alternate !important;
-            }
-            .spirit-depressed-p2 {
-                filter: grayscale(0.5) contrast(0.8) !important;
-                animation: spirit-depressed-p2-anim 0.2s infinite !important;
-            }
-        `;
-        document.head.appendChild(style);
-    }
+    showGameScreen() {
+        // 引数に頼らず、game本体にセットされた「団体戦フラグ」を直接確認する！
+        const isTeamMode = !!(this.game.state && this.game.state.isTeamMode);
 
-   showGameScreen() {
-        // ★ 引数に頼らず、game本体にセットされた「団体戦フラグ」を直接確認する！
-        const isTeamMode = this.game.isTeamMode === true;
-
-        // ★ 団体戦の場合は、team_game.js からラウンド名を取得、個人戦は game.js から
+        // 団体戦の場合は、team_game.js からラウンド名を取得、個人戦は game.js から
         let roundNameStr = "";
         if (isTeamMode && typeof window.teamGame !== 'undefined') {
-            const roundNames = ["", "先鋒戦", "中堅戦", "大将戦", "延長戦"];
-            roundNameStr = roundNames[window.teamGame.state.round] || "延長戦";
+            if (window.teamGame.state.rule === 'kachinuki') {
+                roundNameStr = "";
+            } else {
+                const roundNames = ["", "先鋒戦", "中堅戦", "大将戦", "延長戦"];
+                roundNameStr = roundNames[window.teamGame.state.round] || "延長戦";
+            }
         } else {
             roundNameStr = this.game.getRoundName();
         }
 
         // ベースのテキスト（〇日目など）をセット
-        this.els.dayOverlay.innerHTML = `<div>${roundNameStr}</div>`;
-        
-        // ★ 団体戦の時だけ、種明かし演出（顔画像とVS）を追加する！
         if (isTeamMode) {
             const p1Data = RIKISHI_DATA.find(d => d.id === this.game.state.chars.p1);
             const p2Data = RIKISHI_DATA.find(d => d.id === this.game.state.chars.p2);
-            
+
             if (p1Data && p2Data) {
                 const img1 = this.getImagePath(p1Data.img);
                 const img2 = this.getImagePath(p2Data.img);
-                
-                // オーバーレイの中に、顔画像とVSを追加
-                this.els.dayOverlay.innerHTML += `
-                    <div style="display: flex; align-items: center; justify-content: center; gap: 40px; margin-top: 20px;">
-                        <div style="display:flex; flex-direction:column; align-items:center;">
-                            <img src="${img1}" style="width:120px; height:120px; border-radius:50%; border:5px solid var(--p1-color); background:#333; object-fit:cover;">
-                            <span style="font-size:2rem; color:var(--p1-color); margin-top:10px; text-shadow:2px 2px 0 #fff;">${p1Data.name}</span>
-                        </div>
-                        <div style="font-size:5rem; color:#745399; text-shadow:4px 4px 0 #000; font-style:italic;">VS</div>
-                        <div style="display:flex; flex-direction:column; align-items:center;">
-                            <img src="${img2}" style="width:120px; height:120px; border-radius:50%; border:5px solid var(--p2-color); background:#333; object-fit:cover; transform: scaleX(-1);">
-                            <span style="font-size:2rem; color:var(--p2-color); margin-top:10px; text-shadow:2px 2px 0 #fff;">${p2Data.name}</span>
+
+                // ⑥「○○戦」を上段、その下に「○○ VS ○○」を縦に並べる
+                // ②顔は丸枠で切らず全体を表示（object-fit:contain）。1P→2P の順に出すため初期は非表示。
+                this.els.dayOverlay.innerHTML = `
+                    <img id="team-face-p1" src="${img1}" style="position:absolute; left:0; top:50%; height:115%; transform:translate(-50%, -50%); opacity:0; transition:opacity 0.5s ease; pointer-events:none; z-index:1;">
+                    <img id="team-face-p2" src="${img2}" style="position:absolute; right:0; top:50%; height:115%; transform:translate(50%, -50%); opacity:0; transition:opacity 0.5s ease; pointer-events:none; z-index:1;">
+                    <div style="position:relative; z-index:2; display:flex; flex-direction:column; align-items:center; gap:55px;">
+                        <div>${roundNameStr}</div>
+                        <div style="display:flex; align-items:flex-end; justify-content:center; gap:120px;">
+                            <div id="team-intro-p1" style="display:flex; flex-direction:column; align-items:center; opacity:0; transition:opacity 0.4s ease;">
+                                <span style="font-size:2.8rem; color:#fff;">${p1Data.name}</span>
+                                <span style="font-size:1.8rem; color:#fff; margin-top:14px;">コスト：${p1Data['コスト'] || 0}</span>
+                            </div>
+                            <div id="team-intro-vs" style="font-size:5.5rem; color:#745399; text-shadow:4px 4px 0 #000; font-style:italic; opacity:0; transition:opacity 0.4s ease;">VS</div>
+                            <div id="team-intro-p2" style="display:flex; flex-direction:column; align-items:center; opacity:0; transition:opacity 0.4s ease;">
+                                <span style="font-size:2.8rem; color:#fff;">${p2Data.name}</span>
+                                <span style="font-size:1.8rem; color:#fff; margin-top:14px;">コスト：${p2Data['コスト'] || 0}</span>
+                            </div>
                         </div>
                     </div>
                 `;
+            } else {
+                this.els.dayOverlay.innerHTML = `<div>${roundNameStr}</div>`;
             }
+        } else {
+            this.els.dayOverlay.innerHTML = `<div>${roundNameStr}</div>`;
         }
 
         this.els.dayOverlay.classList.add('visible', 'instant');
@@ -125,7 +109,193 @@ class UIManager {
         requestAnimationFrame(() => { this.els.dayOverlay.classList.remove('instant'); });
     }
 
-  showCharSelect(mode, skipAnim = false) {
+    // 団体戦の開始前演出：1P→2P の順に顔・名前を表示し、各力士のボイスを鳴らしてから戦闘へ
+    async playTeamIntro() {
+        const reveal = (id, op = '1') => { const el = document.getElementById(id); if (el) el.style.opacity = op; };
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        const playVoice = (v) => (v && typeof SoundFX !== 'undefined' && SoundFX.playVoice) ? SoundFX.playVoice(v) : sleep(700);
+
+        const p1 = this.game.p1 ? this.game.p1.baseStats : null;
+        const p2 = this.game.p2 ? this.game.p2.baseStats : null;
+
+        // ③「先鋒戦」表示と同時に拍子木を鳴らす（1戦目のみ）。鳴り終わりは待たずに紹介へ進む。
+        const round = (typeof window.teamGame !== 'undefined') ? window.teamGame.state.round : 1;
+        if (round === 1) {
+            try {
+                const hyoshigi = new Audio('assets/se/hyoshigi.mp3');
+                if (typeof SoundFX !== 'undefined' && SoundFX.seVolume !== undefined) hyoshigi.volume = SoundFX.seVolume;
+                if (typeof SoundFX !== 'undefined') SoundFX._hyoshigi = hyoshigi;
+                hyoshigi.play().catch(() => {});
+            } catch (e) {}
+        }
+
+        // 1P → VS → 2P の順に1つずつ表示する
+        const aborted = () => (this.game && this.game.state && this.game.state.aborted);
+        await sleep(700);
+        if (aborted()) return;
+        reveal('team-face-p1', '0.22');
+        reveal('team-intro-p1');
+        await sleep(300);
+        if (aborted()) return;
+        await playVoice(p1 ? p1.voice : null);
+        if (aborted()) return;
+
+        // VS を単独で表示
+        reveal('team-intro-vs');
+        await sleep(500);
+        if (aborted()) return;
+
+        // 2P を表示し、その力士のボイスを再生
+        reveal('team-face-p2', '0.22');
+        reveal('team-intro-p2');
+        await sleep(300);
+        if (aborted()) return;
+        await playVoice(p2 ? p2.voice : null);
+
+        await sleep(200);
+    }
+
+    // 勝ち抜きの開始前演出：先鋒→中堅→大将を順に、各組1P→2Pで顔・名前・ボイスを発表（「戦」は付けない）
+    async playKachinukiIntro() {
+        const reveal = (id, op = '1') => { const el = document.getElementById(id); if (el) el.style.opacity = op; };
+        const isAborted = () => (this.game && this.game.state && this.game.state.aborted);
+
+        // スキップ制御：Spaceで紹介を飛ばして開始前状態へ
+        this._introSkip = false;
+        let skipWaiters = [];
+        const onSkip = () => { const w = skipWaiters; skipWaiters = []; w.forEach(fn => { try { fn(); } catch (e) {} }); };
+        const skipHandler = (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                this._introSkip = true;
+                if (typeof SoundFX !== 'undefined' && SoundFX.stopVoices) SoundFX.stopVoices();
+                onSkip();
+            }
+        };
+        document.addEventListener('keydown', skipHandler);
+        // Space／中断(aborted)で即解除されるsleep・playVoice
+        const sleep = (ms) => new Promise(r => {
+                if (this._introSkip || isAborted()) { r(); return; }
+                let done = false;
+                const finish = () => { if (done) return; done = true; clearTimeout(t); clearInterval(iv); r(); };
+                const t = setTimeout(finish, ms);
+                const iv = setInterval(() => { if (this._introSkip || isAborted()) finish(); }, 50);
+                skipWaiters.push(finish);
+            });
+        const playVoice = (v) => {
+                if (!v || this._introSkip || isAborted() || typeof SoundFX === 'undefined' || !SoundFX.playVoice) return Promise.resolve();
+                return new Promise(r => {
+                        let done = false;
+                        const fin = () => { if (done) return; done = true; clearInterval(iv); r(); };
+                        const iv = setInterval(() => { if (this._introSkip || isAborted()) fin(); }, 50);
+                        skipWaiters.push(fin);
+                        SoundFX.playVoice(v).then(fin);
+                    });
+            };
+
+        const tg = (typeof window.teamGame !== 'undefined') ? window.teamGame : null;
+        if (!tg) { document.removeEventListener('keydown', skipHandler); return; }
+        const lp1 = tg.state.kachinuki.lineup.p1;
+        const lp2 = tg.state.kachinuki.lineup.p2;
+        const labels = ['先鋒', '中堅', '大将'];
+        const skipHintHtml = `<div style="position:absolute; top:34px; right:50px; color:#fff; font-size:1.5rem; z-index:6; opacity:0.9;">Space：スキップ</div>`;
+
+        // ステージへ切替（裏が覗かないよう day-overlay は不透明のまま）
+        this.els.select.classList.remove('active');
+        this.els.start.classList.remove('active');
+        this.els.wrapper.style.display = 'flex';
+        this.els.dayOverlay.classList.add('visible', 'instant');
+
+        // 拍子木（冒頭1回。中断時に止められるよう登録）
+        try {
+            const hyoshigi = new Audio('assets/se/hyoshigi.mp3');
+            if (typeof SoundFX !== 'undefined' && SoundFX.seVolume !== undefined) hyoshigi.volume = SoundFX.seVolume;
+            if (typeof SoundFX !== 'undefined') SoundFX._hyoshigi = hyoshigi;
+            hyoshigi.play().catch(() => {});
+        } catch (e) {}
+
+        for (let i = 0; i < 3; i++) {
+            if (this._introSkip || isAborted()) break;
+            const p1Data = RIKISHI_DATA.find(d => d.id === lp1[i]);
+            const p2Data = RIKISHI_DATA.find(d => d.id === lp2[i]);
+            if (!p1Data || !p2Data) continue;
+            const img1 = this.getImagePath(p1Data.img);
+            const img2 = this.getImagePath(p2Data.img);
+
+            this.els.dayOverlay.innerHTML = `
+                ${skipHintHtml}
+                <img id="team-face-p1" src="${img1}" style="position:absolute; left:0; top:50%; height:115%; transform:translate(-50%, -50%); opacity:0; transition:opacity 0.5s ease; pointer-events:none; z-index:1;">
+                <img id="team-face-p2" src="${img2}" style="position:absolute; right:0; top:50%; height:115%; transform:translate(50%, -50%); opacity:0; transition:opacity 0.5s ease; pointer-events:none; z-index:1;">
+                <div style="position:relative; z-index:2; display:flex; flex-direction:column; align-items:center; gap:55px;">
+                    <div>${labels[i]}</div>
+                    <div style="display:flex; align-items:flex-end; justify-content:center; gap:120px;">
+                        <div id="team-intro-p1" style="display:flex; flex-direction:column; align-items:center; opacity:0; transition:opacity 0.4s ease;">
+                            <span style="font-size:2.8rem; color:#fff;">${p1Data.name}</span>
+                            <span style="font-size:1.8rem; color:#fff; margin-top:14px;">コスト：${p1Data['コスト'] || 0}</span>
+                        </div>
+                        <div id="team-intro-vs" style="font-size:5.5rem; color:#745399; text-shadow:4px 4px 0 #000; font-style:italic; opacity:0; transition:opacity 0.4s ease;">VS</div>
+                        <div id="team-intro-p2" style="display:flex; flex-direction:column; align-items:center; opacity:0; transition:opacity 0.4s ease;">
+                            <span style="font-size:2.8rem; color:#fff;">${p2Data.name}</span>
+                            <span style="font-size:1.8rem; color:#fff; margin-top:14px;">コスト：${p2Data['コスト'] || 0}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            requestAnimationFrame(() => { this.els.dayOverlay.classList.remove('instant'); });
+
+            await sleep(450);
+            if (this._introSkip || isAborted()) break;
+            reveal('team-face-p1', '0.22');
+            reveal('team-intro-p1');
+            await sleep(250);
+            if (this._introSkip || isAborted()) break;
+            await playVoice(p1Data.voice);
+            reveal('team-intro-vs');
+            await sleep(350);
+            if (this._introSkip || isAborted()) break;
+            reveal('team-face-p2', '0.22');
+            reveal('team-intro-p2');
+            await sleep(250);
+            if (this._introSkip || isAborted()) break;
+            await playVoice(p2Data.voice);
+            await sleep(450);
+        }
+        document.removeEventListener('keydown', skipHandler);
+        // 中断（休場など）で抜けた場合は発表オーバーレイを消す（裏の選択画面に演出が残らないように）
+        if (isAborted()) {
+            if (typeof SoundFX !== 'undefined' && SoundFX.stopVoices) SoundFX.stopVoices();
+            this.els.dayOverlay.classList.remove('visible', 'instant');
+            this.els.dayOverlay.innerHTML = '';
+        }
+    }
+
+    // 戦闘画面と同じ見た目（顔＋体・同サイズ）の力士スプライトHTMLを生成（結果画面コーナー用）
+    buildBattleSprite(charId, side, isCPU = false) {
+        const c = (typeof RIKISHI_DATA !== 'undefined') ? RIKISHI_DATA.find(d => d.id === charId) : null;
+        if (!c) return '';
+        let bodyImg = (side === 'p1') ? 'assets/img/rikiship1.png' : 'assets/img/rikiship2.png';
+        if (isCPU) bodyImg = 'assets/img/rikishiCPU.png';
+        const faceSrc = this.getImagePath(c.img);
+        const w = c.weight || 3;
+        const h = c.height || 3;
+        const scaleX = 0.6 + w * 0.12;   // 体重→横幅（戦闘と同じ）
+        const scaleY = 0.6 + h * 0.12;   // 身長→縦幅（戦闘と同じ）
+        let headTop = -35;               // 顔の位置（戦闘と同じ）
+        if (h === 1) headTop = -5;
+        else if (h === 2) headTop = -25;
+        else if (h === 3) headTop = -35;
+        else if (h === 4) headTop = -60;
+        else if (h === 5) headTop = -75;
+        const breathDur = (typeof speedAnimDuration === 'function') ? speedAnimDuration(c.speed) : 1.2;
+        return `<div class="rikishi" style="position:relative; bottom:auto; left:auto; width:130px; height:160px;">
+            <div class="rikishi-body" style="animation: idleBreath ${breathDur}s infinite ease-in-out;">
+                <img src="${bodyImg}" class="body-img" style="transform: scale(${scaleX}, ${scaleY}); transform-origin: bottom center;">
+                <div class="head" style="background-image:url('${faceSrc}'); top:${headTop}px; transform:translateX(-50%);"></div>
+            </div>
+        </div>`;
+    }
+
+    showCharSelect(mode, skipAnim = false) {
         if (typeof settings !== 'undefined') {
             settings.current.bgmFile = 'random';
             settings.save();
@@ -134,15 +304,15 @@ class UIManager {
             SoundFX.selectedBgmFile = 'random';
         }
 
-       if (mode === 'init') {
+        if (mode === 'init') {
             this.game.state.wins = { p1: 0, p2: 0 };
             this.game.state.current = 1;
         }
         this.els.res.classList.remove('visible');
         this.els.wrapper.style.display = 'none';
         this.els.start.classList.remove('active');
-        
-        // ▼▼▼ 追加：力士選択画面に戻る際、設定モーダル類が開いていれば強制的に閉じる ▼▼▼
+
+        // 追加：力士選択画面に戻る際、設定モーダル類が開いていれば強制的に閉じる
         const matchSelect = document.getElementById('match-count-select');
         if (matchSelect) {
             const modal = matchSelect.closest('.modal-overlay, .modal-window, [id*="modal"], [class*="modal"]');
@@ -155,28 +325,28 @@ class UIManager {
         }
         this.els.select.classList.add('active');
 
-        // ★究極の解決策：Web Animations API を使って一瞬でアニメを完了させる
+        // 究極の解決策：Web Animations API を使って一瞬でアニメを完了させる
         if (skipAnim) {
             const fastForward = () => {
                 if (!this.els.select) return;
                 // 画面内のすべてのアニメーションを検知
                 const anims = this.els.select.getAnimations({ subtree: true });
                 anims.forEach(anim => {
-                    // 呼吸(idleBreath)のような「無限ループ」のものはスキップしない
-                    if (anim.effect && anim.effect.getTiming().iterations === Infinity) return;
-                    
-                    // 登場アニメーション（1回限りのもの）を一瞬で100%の状態まで終わらせる
-                    try { anim.finish(); } catch(e) {}
-                });
+                        // 呼吸(idleBreath)のような「無限ループ」のものはスキップしない
+                        if (anim.effect && anim.effect.getTiming().iterations === Infinity) return;
+
+                        // 登場アニメーション（1回限りのもの）を一瞬で100%の状態まで終わらせる
+                        try { anim.finish(); } catch(e) {}
+                    });
             };
-            
+
             // 画面が描画された直後に発動
             requestAnimationFrame(() => {
-                fastForward();
-                // 念のため、少し遅れて生成された要素も確実に仕留める
-                setTimeout(fastForward, 50);
-                setTimeout(fastForward, 150);
-            });
+                    fastForward();
+                    // 念のため、少し遅れて生成された要素も確実に仕留める
+                    setTimeout(fastForward, 50);
+                    setTimeout(fastForward, 150);
+                });
         }
     }
 
@@ -195,9 +365,9 @@ class UIManager {
         const selectWrapper = document.getElementById('select-scaling-wrapper');
         if (selectWrapper) selectWrapper.style.transform = `translate(-50%, -50%) scale(${scale})`;
 
-        document.querySelectorAll('.pause-box, .settings-scale-wrapper, .confirm-box, .modal-window').forEach(box => {
-            box.style.transform = `scale(${uiScale})`;
-        });
+        document.querySelectorAll('.pause-box, .settings-scale-wrapper, .modal-window').forEach(box => {
+                box.style.transform = `scale(${uiScale})`;
+            });
 
         if (this.els.dayOverlay) this.els.dayOverlay.style.fontSize = `calc(8rem * ${scale})`;
 
@@ -268,24 +438,27 @@ class UIManager {
 
     resetVisuals(p1, p2) {
         if (this.animTimer) { clearTimeout(this.animTimer); this.animTimer = null; }
-        document.querySelectorAll('.damage-popup, .effect-visual, .shockwave').forEach(e => e.remove());
+        document.querySelectorAll('.damage-popup').forEach(e => e.remove());
 
         [p1, p2].forEach(p => {
-            p.el.className = 'rikishi'; p.fallDir = null;
-            p.el.style.left = `${p.initialX}px`; p.el.style.transform = '';
-            p.el.classList.remove('reversal-glow', 'stunned');
-            if (p.dom && p.dom.bar) {
-                const hpFrame = p.dom.bar.parentElement;
-                if (hpFrame) {
-                    hpFrame.classList.remove('spirit-burning', 'spirit-depressed');
+                p.el.className = 'rikishi'; p.fallDir = null;
+                p.el.style.left = `${p.initialX}px`; p.el.style.transform = '';
+                p.el.classList.remove('reversal-glow', 'stunned');
+                // 本体の回転（転倒ポーズ等）はトランジション無しで即リセットし、起き上がりアニメを起こさない
+                const bodyEl = p.el.querySelector('.rikishi-body');
+                if (bodyEl) { bodyEl.style.transition = 'none'; bodyEl.style.transform = 'rotate(0deg)'; }
+                if (p.dom && p.dom.bar) {
+                    const hpFrame = p.dom.bar.parentElement;
+                    if (hpFrame) {
+                        hpFrame.classList.remove('spirit-burning', 'spirit-depressed');
+                    }
                 }
-            }
-            const bodyImg = p.el.querySelector('.body-img');
-            if (bodyImg) bodyImg.style.transform = '';
-            if (p.elHead) p.elHead.style.top = '-45px';
-            if (p.initDOM) p.initDOM();
-            if (p.updateSize) p.updateSize();
-        });
+                const bodyImg = p.el.querySelector('.body-img');
+                if (bodyImg) bodyImg.style.transform = '';
+                if (p.elHead) p.elHead.style.top = '-45px';
+                if (p.initDOM) p.initDOM();
+                if (p.updateSize) p.updateSize();
+            });
 
         this.setGyojiImage('hakkeyoi');
         this.els.gyoji.classList.remove('flipped', 'gyoji-confused');
@@ -293,6 +466,11 @@ class UIManager {
         this.els.call.style.display = 'none';
         this.els.grappleInd.style.display = 'none';
         void this.els.stage.offsetWidth;
+        // 即リセットを確定させたのちトランジションを元に戻す（取組中の転倒アニメは通常通り効かせる）
+        [p1, p2].forEach(p => {
+                const bodyEl = p.el.querySelector('.rikishi-body');
+                if (bodyEl) bodyEl.style.transition = '';
+            });
     }
 
     draw(p1, p2) {
@@ -322,8 +500,6 @@ class UIManager {
         const hpBar = (p.dom && p.dom.bar) ? p.dom.bar : document.getElementById(`${id}-hp-bar`);
         const chBar = (p.dom && p.dom.charge) ? p.dom.charge : document.getElementById(`${id}-charge-bar`);
         if (!hpBar || !chBar) return;
-
-        if (p.dom && p.dom.max) p.dom.max.style.display = 'none';
 
         const hpFrame = hpBar.parentElement;
         if (hpFrame && p.initialMaxStamina) {
@@ -394,33 +570,33 @@ class UIManager {
         setClass(outer, 'locked', isLock);
     }
 
-updateRikishi(p) {
+    updateRikishi(p) {
         p.el.style.left = `${p.x}px`;
 
         const s = p.getPhysiqueScale ? p.getPhysiqueScale() : {x: 1.0, y: 1.0};
-        
-        // ★追加: 実際の身長の数値(1〜5)を取得する
+
+        // 実際の身長の数値(1〜5)を取得する
         const hVal = p.baseStats ? (p.baseStats.height || 3) : 3;
 
         const b = p.el.querySelector('.body-img');
         const h = p.el.querySelector('.head');
-        
+
         if (b) {
             b.style.transform = `scale(${s.x}, ${s.y})`;
             b.style.transformOrigin = 'bottom center';
         }
         if (h) {
             h.style.transform = `translateX(-50%)`;
-            h.style.transformOrigin = 'center center'; 
-            
-            // ▼▼▼ 修正: 試合画面もプレビューと全く同じ数値を直接指定する ▼▼▼
+            h.style.transformOrigin = 'center center';
+
+            // 修正: 試合画面もプレビューと全く同じ数値を直接指定する
             let headTop = -30;
             if (hVal === 1) headTop = -5;   // 首が詰まりすぎたので上に（マイナス寄りに）逃がす
-            if (hVal === 2) headTop = -25;  
+            if (hVal === 2) headTop = -25;
             if (hVal === 3) headTop = -35;  // 平均身長
-            if (hVal === 4) headTop = -60;  
+            if (hVal === 4) headTop = -60;
             if (hVal === 5) headTop = -75;  // 先ほど良い感じだった高身長の位置
-            
+
             h.style.top = `${headTop}px`;
         }
 
@@ -464,44 +640,42 @@ updateRikishi(p) {
         this.draw(this.game.p1, this.game.p2);
         void loser.el.offsetWidth;
         this.animTimer = setTimeout(() => {
-            if (loser.x < winner.x) loser.fallDir = 'left';
-            else loser.fallDir = 'right';
-            this.draw(this.game.p1, this.game.p2);
-            this.animTimer = null;
-        }, 50);
+                if (loser.x < winner.x) loser.fallDir = 'left';
+                else loser.fallDir = 'right';
+                this.draw(this.game.p1, this.game.p2);
+                this.animTimer = null;
+            }, 50);
     }
 
     triggerDoubleSlowMotion(p1, p2) {
         if (this.animTimer) clearTimeout(this.animTimer);
 
         [p1, p2].forEach(p => {
-            p.el.classList.remove('charge-active', 'charge-mid', 'charge-max', 'parry-active', 'miss-active', 'stunned');
-            p.isDefeated = true;
-            p.fallDir = null;
-        });
+                p.el.classList.remove('charge-active', 'charge-mid', 'charge-max', 'parry-active', 'miss-active', 'stunned');
+                p.isDefeated = true;
+                p.fallDir = null;
+            });
 
         this.draw(this.game.p1, this.game.p2);
         void p1.el.offsetWidth;
 
         this.animTimer = setTimeout(() => {
-            if (p1.x < p2.x) {
-                p1.fallDir = 'left';
-                p2.fallDir = 'right';
-            } else {
-                p1.fallDir = 'right';
-                p2.fallDir = 'left';
-            }
-            this.draw(this.game.p1, this.game.p2);
-            this.animTimer = null;
-        }, 50);
+                if (p1.x < p2.x) {
+                    p1.fallDir = 'left';
+                    p2.fallDir = 'right';
+                } else {
+                    p1.fallDir = 'right';
+                    p2.fallDir = 'left';
+                }
+                this.draw(this.game.p1, this.game.p2);
+                this.animTimer = null;
+            }, 50);
     }
 
     fx(a, b, type) {
         const cx = (a.x + b.x) / 2 + 55;
         const y = 300;
-        if (type === 'parry') {
-            const s = document.createElement('div'); s.className = 'shockwave'; a.el.appendChild(s); setTimeout(() => s.remove(), 500);
-        } else {
+        if (type !== 'parry') {
             const st = document.getElementById('stage');
             st.classList.remove('shake');
             void st.offsetWidth;
@@ -546,14 +720,14 @@ updateRikishi(p) {
         el.style.top = `${y}px`;
         this.els.stage.appendChild(el);
 
-        const durationFrames = (CONFIG.UI && CONFIG.UI.DMG_DURATION) ? CONFIG.UI.DMG_DURATION : 60;
+        const durationFrames = cfg('UI.DMG_DURATION', 60);
         const durationMs = durationFrames * 16.6;
 
         setTimeout(() => {
-            el.style.opacity = '0';
-            el.style.transform = 'translateY(-20px)';
-            setTimeout(() => el.remove(), 300);
-        }, durationMs);
+                el.style.opacity = '0';
+                el.style.transform = 'translateY(-20px)';
+                setTimeout(() => el.remove(), 300);
+            }, durationMs);
     }
 
     showBGMToast(trackName) {
@@ -562,13 +736,24 @@ updateRikishi(p) {
         if (!toast || !nameSpan) return;
 
         nameSpan.textContent = trackName;
-        toast.classList.add('show');
-
         if (this.bgmToastTimer) clearTimeout(this.bgmToastTimer);
+
+        // 1) トランジション無効で右外(translateX(100%))へ瞬時リセット（表示中でも確実に戻す）
+        toast.style.transition = 'none';
+        toast.classList.remove('show');
+        void toast.offsetWidth; // リフローで即反映
+        // 2) トランジションをCSS(1.5s)に戻し、次フレームでスライドイン
+        toast.style.transition = '';
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                toast.classList.add('show');
+            });
+        });
+
         this.bgmToastTimer = setTimeout(() => {
-            toast.classList.remove('show');
-            this.bgmToastTimer = null;
-        }, 5000);
+                toast.classList.remove('show'); // 右へスライドアウト
+                this.bgmToastTimer = null;
+            }, 5000);
     }
 
     msg(p, txt, miss, parry, reversal) {
@@ -579,6 +764,11 @@ updateRikishi(p) {
 
     startGyojiCalls(activeStateChecker) {
         this.stopGyojiCalls();
+        const randInterval = () => {
+            const minInt = cfg('UI.GYOJI_INTERVAL_MIN', 800);
+            const maxInt = cfg('UI.GYOJI_INTERVAL_MAX', 2500);
+            return Math.floor(Math.random() * (maxInt - minInt + 1)) + minInt;
+        };
         let lastType = 'nokotta';
         let sideToggle = false;
         const runLoop = () => {
@@ -591,30 +781,18 @@ updateRikishi(p) {
             SoundFX.playVoice(type, 0.66);
             this.showGyojiCall(text, sideToggle ? 'right' : 'left');
             if (this.els.gyoji) {
-                this.els.gyoji.classList.remove('gyoji-flip-jump');
-                void this.els.gyoji.offsetWidth;
-                this.els.gyoji.classList.add('gyoji-flip-jump');
                 this.els.gyoji.style.transform = sideToggle ? 'scaleX(-1)' : 'scaleX(1)';
             }
             sideToggle = !sideToggle;
-            const minInt = (CONFIG.UI && CONFIG.UI.GYOJI_INTERVAL_MIN) ? CONFIG.UI.GYOJI_INTERVAL_MIN : 800;
-            const maxInt = (CONFIG.UI && CONFIG.UI.GYOJI_INTERVAL_MAX) ? CONFIG.UI.GYOJI_INTERVAL_MAX : 2500;
-            const nextInterval = Math.floor(Math.random() * (maxInt - minInt + 1)) + minInt;
-
-            this.gyojiTimer = setTimeout(runLoop, nextInterval);
+            this.gyojiTimer = setTimeout(runLoop, randInterval());
         };
-        const minInt = (CONFIG.UI && CONFIG.UI.GYOJI_INTERVAL_MIN) ? CONFIG.UI.GYOJI_INTERVAL_MIN : 800;
-        const maxInt = (CONFIG.UI && CONFIG.UI.GYOJI_INTERVAL_MAX) ? CONFIG.UI.GYOJI_INTERVAL_MAX : 2500;
-        const firstInterval = Math.floor(Math.random() * (maxInt - minInt + 1)) + minInt;
-
-        this.gyojiTimer = setTimeout(runLoop, firstInterval);
+        this.gyojiTimer = setTimeout(runLoop, randInterval());
     }
 
     stopGyojiCalls() {
         if (this.gyojiTimer) { clearTimeout(this.gyojiTimer); this.gyojiTimer = null; }
         document.querySelectorAll('.gyoji-shout').forEach(el => el.remove());
         if (this.els.gyoji) {
-            this.els.gyoji.classList.remove('gyoji-flip-jump');
             this.els.gyoji.style.transform = 'scaleX(1)';
         }
     }
@@ -659,18 +837,18 @@ updateRikishi(p) {
         if (isUnlocking) {
             if (typeof SoundFX !== 'undefined') SoundFX.playTone('reversal');
             dreamIcons.forEach((icon, index) => {
-                setTimeout(() => {
-                    icon.classList.remove('secret-hidden');
-                    icon.classList.add('secret-reveal');
-                }, index * 100);
-            });
+                    setTimeout(() => {
+                            icon.classList.remove('secret-hidden');
+                            icon.classList.add('secret-reveal');
+                        }, index * 100);
+                });
             settings.showToast("隠し力士 解禁！");
         } else {
             if (typeof SoundFX !== 'undefined') SoundFX.playTone('miss');
             dreamIcons.forEach((icon) => {
-                icon.classList.remove('secret-reveal');
-                icon.classList.add('secret-hidden');
-            });
+                    icon.classList.remove('secret-reveal');
+                    icon.classList.add('secret-hidden');
+                });
             settings.showToast("隠し力士 封印…");
         }
     }
@@ -689,34 +867,14 @@ updateRikishi(p) {
         const iconGrid = document.querySelector('#char-select-screen #icon-grid') || document.getElementById('icon-grid');
         if (!iconGrid) return;
         iconGrid.innerHTML = '';
-        const gridSlots = new Array(20).fill(null);
-        const unplacedChars = [];
-        RIKISHI_DATA.forEach(d => {
-            if (d.slot !== null && d.slot >= 0 && d.slot < 20 && gridSlots[d.slot] === null) {
-                gridSlots[d.slot] = d;
-            } else {
-                unplacedChars.push(d);
-            }
-        });
-        let unplacedIdx = 0;
-        for (let i = 0; i < 20; i++) {
-            if (gridSlots[i] === null && unplacedIdx < unplacedChars.length) {
-                gridSlots[i] = unplacedChars[unplacedIdx++];
-            }
-        }
+        const gridSlots = buildCharGridSlots();
         for (let i = 0; i < 20; i++) {
             const icon = document.createElement('div');
             const charData = gridSlots[i];
             let classes = ['char-select-icon'];
             if (charData) {
                 icon.dataset.id = charData.id;
-                let bgFile = '';
-                const isLegend = (charData.category === "レジェンド");
-
-                if (charData.desc.includes('パワー')) bgFile = isLegend ? 'chikara2_bg.png' : 'chikara1_bg.png';
-                else if (charData.desc.includes('スピード')) bgFile = isLegend ? 'hayasa2_bg.png' : 'hayasa1_bg.png';
-                else if (charData.desc.includes('テクニック')) bgFile = isLegend ? 'gizyutu2_bg.png' : 'gizyutu1_bg.png';
-                else if (charData.desc.includes('バランス')) bgFile = isLegend ? 'baransu2_bg.png' : 'baransu1_bg.png';
+                const bgFile = charTypeAssets(charData).bg;
 
                 if (bgFile) {
                     const faceImg = this.getImagePath(charData.img);
@@ -757,63 +915,63 @@ updateRikishi(p) {
         let isDragging = false; let dragId = null; let dragSource = null;
 
         document.addEventListener('mousedown', (e) => {
-            const icon = e.target.closest('.char-select-icon');
-            if (icon) {
-                if (icon.classList.contains('inactive') || icon.classList.contains('secret-hidden') || !icon.hasAttribute('data-id')) return;
-                e.preventDefault(); isDragging = true; dragId = parseInt(icon.dataset.id); dragSource = 'icon';
-                const charData = RIKISHI_DATA.find(d => d.id === dragId);
-                ghost.style.backgroundImage = `url('${charData ? this.getImagePath(charData.img) : ""}')`;
-                ghost.style.display = 'block';
-                this.moveGhost(ghost, e.clientX, e.clientY); return;
-            }
-            const head = e.target.closest('.preview-char-img .head');
-            if (head) {
-                const box = head.closest('.preview-box'); if (!box) return;
-                const pId = box.id === 'preview-p1' ? 'p1' : 'p2';
-                const charId = this.game.state.chars[pId]; if (charId === null) return;
-                e.preventDefault(); isDragging = true; dragId = charId; dragSource = pId;
-                const charData = RIKISHI_DATA.find(d => d.id === charId);
-                ghost.style.backgroundImage = `url('${charData ? this.getImagePath(charData.img) : ""}')`;
-                ghost.style.display = 'block';
-                head.classList.add('dragging-source'); this.moveGhost(ghost, e.clientX, e.clientY);
-            }
-        });
+                const icon = e.target.closest('.char-select-icon');
+                if (icon) {
+                    if (icon.classList.contains('inactive') || icon.classList.contains('secret-hidden') || !icon.hasAttribute('data-id')) return;
+                    e.preventDefault(); isDragging = true; dragId = parseInt(icon.dataset.id); dragSource = 'icon';
+                    const charData = RIKISHI_DATA.find(d => d.id === dragId);
+                    ghost.style.backgroundImage = `url('${charData ? this.getImagePath(charData.img) : ""}')`;
+                    ghost.style.display = 'block';
+                    this.moveGhost(ghost, e.clientX, e.clientY); return;
+                }
+                const head = e.target.closest('.preview-char-img .head');
+                if (head) {
+                    const box = head.closest('.preview-box'); if (!box) return;
+                    const pId = box.id === 'preview-p1' ? 'p1' : 'p2';
+                    const charId = this.game.state.chars[pId]; if (charId === null) return;
+                    e.preventDefault(); isDragging = true; dragId = charId; dragSource = pId;
+                    const charData = RIKISHI_DATA.find(d => d.id === charId);
+                    ghost.style.backgroundImage = `url('${charData ? this.getImagePath(charData.img) : ""}')`;
+                    ghost.style.display = 'block';
+                    head.classList.add('dragging-source'); this.moveGhost(ghost, e.clientX, e.clientY);
+                }
+            });
         document.addEventListener('mousemove', (e) => {
-            if (!isDragging) return;
-            e.preventDefault(); this.moveGhost(ghost, e.clientX, e.clientY);
-            const p1Box = document.getElementById('preview-p1'); const p2Box = document.getElementById('preview-p2');
-            const rect1 = p1Box.getBoundingClientRect(); const rect2 = p2Box.getBoundingClientRect();
-            p1Box.classList.remove('drag-hover'); p2Box.classList.remove('drag-hover');
-            if (this.isHit(e.clientX, e.clientY, rect1)) p1Box.classList.add('drag-hover');
-            else if (this.isHit(e.clientX, e.clientY, rect2)) p2Box.classList.add('drag-hover');
-        });
+                if (!isDragging) return;
+                e.preventDefault(); this.moveGhost(ghost, e.clientX, e.clientY);
+                const p1Box = document.getElementById('preview-p1'); const p2Box = document.getElementById('preview-p2');
+                const rect1 = p1Box.getBoundingClientRect(); const rect2 = p2Box.getBoundingClientRect();
+                p1Box.classList.remove('drag-hover'); p2Box.classList.remove('drag-hover');
+                if (this.isHit(e.clientX, e.clientY, rect1)) p1Box.classList.add('drag-hover');
+                else if (this.isHit(e.clientX, e.clientY, rect2)) p2Box.classList.add('drag-hover');
+            });
         document.addEventListener('mouseup', (e) => {
-            if (!isDragging) return;
-            isDragging = false; ghost.style.display = 'none';
-            document.querySelectorAll('.preview-char-img .head').forEach(el => el.classList.remove('dragging-source'));
-            const p1Box = document.getElementById('preview-p1'); const p2Box = document.getElementById('preview-p2');
-            p1Box.classList.remove('drag-hover'); p2Box.classList.remove('drag-hover');
-            const rect1 = p1Box.getBoundingClientRect(); const rect2 = p2Box.getBoundingClientRect();
-            const hitP1 = this.isHit(e.clientX, e.clientY, rect1); const hitP2 = this.isHit(e.clientX, e.clientY, rect2);
-            let hitIconID = null;
-            const icons = document.querySelectorAll('.char-select-icon:not(.inactive):not(.secret-hidden)');
+                if (!isDragging) return;
+                isDragging = false; ghost.style.display = 'none';
+                document.querySelectorAll('.preview-char-img .head').forEach(el => el.classList.remove('dragging-source'));
+                const p1Box = document.getElementById('preview-p1'); const p2Box = document.getElementById('preview-p2');
+                p1Box.classList.remove('drag-hover'); p2Box.classList.remove('drag-hover');
+                const rect1 = p1Box.getBoundingClientRect(); const rect2 = p2Box.getBoundingClientRect();
+                const hitP1 = this.isHit(e.clientX, e.clientY, rect1); const hitP2 = this.isHit(e.clientX, e.clientY, rect2);
+                let hitIconID = null;
+                const icons = document.querySelectorAll('.char-select-icon:not(.inactive):not(.secret-hidden)');
 
-            for (let ic of icons) { const r = ic.getBoundingClientRect(); if (this.isHit(e.clientX, e.clientY, r)) { hitIconID = parseInt(ic.dataset.id); break; } }
-            if (hitP1) {
-                this.game.selectChar('p1', dragId);
-                if (dragSource === 'p2') this.game.selectChar('p2', null);
-            }
-            else if (hitP2) {
-                this.game.selectChar('p2', dragId);
-                if (dragSource === 'p1') this.game.selectChar('p1', null);
-            }
-            else if (hitIconID !== null && (dragSource === 'p1' || dragSource === 'p2')) {
-                this.game.selectChar(dragSource, hitIconID);
-            }
-            else if (dragSource === 'p1' || dragSource === 'p2') {
-                this.game.selectChar(dragSource, null);
-            }
-        });
+                for (let ic of icons) { const r = ic.getBoundingClientRect(); if (this.isHit(e.clientX, e.clientY, r)) { hitIconID = parseInt(ic.dataset.id); break; } }
+                if (hitP1) {
+                    this.game.selectChar('p1', dragId);
+                    if (dragSource === 'p2') this.game.selectChar('p2', null);
+                }
+                else if (hitP2) {
+                    this.game.selectChar('p2', dragId);
+                    if (dragSource === 'p1') this.game.selectChar('p1', null);
+                }
+                else if (hitIconID !== null && (dragSource === 'p1' || dragSource === 'p2')) {
+                    this.game.selectChar(dragSource, hitIconID);
+                }
+                else if (dragSource === 'p1' || dragSource === 'p2') {
+                    this.game.selectChar(dragSource, null);
+                }
+            });
     }
     moveGhost(ghost, x, y) { ghost.style.left = x + 'px'; ghost.style.top = y + 'px'; }
     isHit(x, y, rect) { return (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom); }
@@ -848,7 +1006,7 @@ updateRikishi(p) {
                 <div class="switch-wrapper">
                     <span class="player-label-text">Player</span>
                     <label class="switch">
-                        <input type="checkbox" id="cpu-toggle-${playerId}" onchange="game.toggleP${playerId === 'p1' ? '1' : '2'}CPU(this.checked)" ${checked}>
+                        <input type="checkbox" id="cpu-toggle-${playerId}" onchange="game.toggleCPU('${playerId}', this.checked)" ${checked}>
                         <span class="slider round"></span>
                     </label>
                     <span class="cpu-label-text">CPU</span>
@@ -876,14 +1034,9 @@ updateRikishi(p) {
                 const type = charData.desc;
                 dockClass = typeMap[type] || 'dock-balance';
 
-                let bgFile = '';
-                const isLegend = (charData.category === "レジェンド");
-                let typeImgFile = 'TypeBalance.png';
-
-                if (charData.desc.includes('パワー')) { bgFile = isLegend ? 'chikara2_bg.png' : 'chikara1_bg.png'; typeImgFile = 'TypePower.png'; }
-                else if (charData.desc.includes('スピード')) { bgFile = isLegend ? 'hayasa2_bg.png' : 'hayasa1_bg.png'; typeImgFile = 'TypeSpeed.png'; }
-                else if (charData.desc.includes('テクニック')) { bgFile = isLegend ? 'gizyutu2_bg.png' : 'gizyutu1_bg.png'; typeImgFile = 'TypeTech.png'; }
-                else if (charData.desc.includes('バランス')) { bgFile = isLegend ? 'baransu2_bg.png' : 'baransu1_bg.png'; typeImgFile = 'TypeBalance.png'; }
+                const assets = charTypeAssets(charData);
+                const bgFile = assets.bg;
+                const typeImgFile = assets.typeImg;
 
                 typeIconHtml = `<img src="assets/img/${typeImgFile}" class="type-kanji-icon" alt="${type}">`;
                 if (bgFile) bgHtml = `<div class="char-background" style="background-image: url('assets/img/${bgFile}');"></div>`;
@@ -894,8 +1047,6 @@ updateRikishi(p) {
         }
 
         const selectedClass = (charId !== null) ? 'is-selected' : '';
-        let physiqueClass = '';
-        if (charData) { physiqueClass = 'physique-' + (charData.physique || 3); }
 
         let headStyle = 'display:none;';
         if (charId !== null && charData) {
@@ -906,28 +1057,7 @@ updateRikishi(p) {
         let bodyAnimStyle = '';
         let bodyImgStyle = '';
         if (charId !== null && charData) {
-           const spd = charData.speed || 5;
-
-            // ▼▼▼ 修正: 計算式を廃止！スピード(1〜10)ごとの秒数を直接配列で指定する ▼▼▼
-            const durations = [
-                1.75, // スピード1 (一番遅い)
-                1.50, // スピード2
-                1.35, // スピード3
-                1.20, // スピード4
-                1.05, // スピード5 (平均)
-                0.90, // スピード6
-                0.75, // スピード7
-                0.60, // スピード8
-                0.45, // スピード9
-                0.30  // スピード10 (一番早い)
-            ];
-
-            // spd(1〜10) を配列の順番(0〜9)に合わせる。念のため11以上や0以下が来てもエラーにならないよう制限
-            const spdIndex = Math.max(0, Math.min(spd - 1, 9));
-            const duration = durations[spdIndex];
-            
-            bodyAnimStyle = `style="animation-duration: ${duration}s;"`;
-            // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+            bodyAnimStyle = `style="animation-duration: ${speedAnimDuration(charData.speed)}s;"`;
             let scaleX = 1.0; let scaleY = 1.0;
             const wVal = charData.weight || 3;
             const hVal = charData.height || 3;
@@ -939,24 +1069,22 @@ updateRikishi(p) {
             else if (hVal === 4) { scaleY = 1.08; }
             else if (hVal === 5) { scaleY = 1.20; }
 
- // 体重(weight)による横幅の計算（12%刻み）
+            // 体重(weight)による横幅の計算（12%刻み）
             if (wVal === 1) { scaleX = 0.72; }
             else if (wVal === 2) { scaleX = 0.84; }
             else if (wVal === 3) { scaleX = 0.96; }
             else if (wVal === 4) { scaleX = 1.08; }
             else if (wVal === 5) { scaleX = 1.20; }
 
-
             let headTop = -30;
             if (hVal === 1) headTop = 25;   // 首が詰まりすぎたので上に（マイナス寄りに）逃がす
-            if (hVal === 2) headTop = -5;  
+            if (hVal === 2) headTop = -5;
             if (hVal === 3) headTop = -30;  // 平均身長
-            if (hVal === 4) headTop = -55;  
+            if (hVal === 4) headTop = -55;
             if (hVal === 5) headTop = -75;  // 先ほど良い感じだった高身長の位置
 
             bodyImgStyle = `style="transform: scale(${scaleX}, ${scaleY}); transform-origin: bottom center;"`;
-            const preBaseH = 195; const preBaseTop = -38; const preGap = preBaseH * (1 - scaleY);
-           headStyle += `top: ${headTop}px;`;
+            headStyle += `top: ${headTop}px;`;
         }
         const size = 100; const center = size / 2; const maxR = 40;
         let points = [0, 1, 2, 3, 4, 5].map(() => `${center},${center}`).join(' ');
@@ -964,12 +1092,12 @@ updateRikishi(p) {
         if (charData) {
             const stats = [charData.power, charData.tech, charData.speed, charData.stamina, charData.spirit, charData.reversal];
             points = stats.map((val, i) => {
-                const angle = (Math.PI * 2 / 6) * i - (Math.PI / 2);
-                const r = (val / 10) * maxR;
-                const x = center + r * Math.cos(angle);
-                const y = center + r * Math.sin(angle);
-                return `${x},${y}`;
-            }).join(' ');
+                    const angle = (Math.PI * 2 / 6) * i - (Math.PI / 2);
+                    const r = (val / 10) * maxR;
+                    const x = center + r * Math.cos(angle);
+                    const y = center + r * Math.sin(angle);
+                    return `${x},${y}`;
+                }).join(' ');
         }
 
         let radarHtml = `
@@ -987,7 +1115,7 @@ updateRikishi(p) {
 
         let html = `${switchHtml}
         ${dockFaceHtml}
-        <div class="preview-char-img ${selectedClass} ${physiqueClass}">
+        <div class="preview-char-img ${selectedClass}">
             ${typeIconHtml}
             ${bgHtml}
             <div class="anim-wrapper ${dockClass}">
@@ -1052,33 +1180,31 @@ updateRikishi(p) {
         }
         const keyEls = document.querySelectorAll(`.block-key[data-code="${code}"]`);
         keyEls.forEach(el => {
-            if (isPressed) el.classList.add('key-pressed');
-            else el.classList.remove('key-pressed');
-        });
+                if (isPressed) el.classList.add('key-pressed');
+                else el.classList.remove('key-pressed');
+            });
     }
 
-// =========================================================
-    // ▼▼▼ BGMモーダル (無音維持 & フェードイン復帰 対応版) ▼▼▼
-    // =========================================================
+    // BGMモーダル (無音維持 & フェードイン復帰 対応版)
 
     openBgmModal() {
         const modal = document.getElementById('bgm-modal');
         if (modal) {
             modal.classList.add('active');
-            
+
             this.savedBgmFile = (typeof settings !== 'undefined' && settings.current && settings.current.bgmFile) ? settings.current.bgmFile : 'random';
             this.tempSelectedFile = this.savedBgmFile;
             this.tempSelectedName = this.getBgmName(this.tempSelectedFile);
-            
+
             this.isPreviewing = false;
-            this.isMutedForPreview = false; // ★追加: メインテーマをミュートしたかどうかのフラグ
-            
+            this.isMutedForPreview = false; // メインテーマをミュートしたかどうかのフラグ
+
             if (this.previewAudio) {
                 this.previewAudio.pause();
                 this.previewAudio = null;
             }
-            
-            this.showAlbumView(); 
+
+            this.showAlbumView();
             this.updateFixedControls();
         }
     }
@@ -1095,7 +1221,7 @@ updateRikishi(p) {
     closeBgmModal() {
         const modal = document.getElementById('bgm-modal');
         if (modal) modal.classList.remove('active');
-        
+
         // 視聴中だった場合は視聴音声を止める
         if (this.previewAudio) {
             this.previewAudio.pause();
@@ -1103,32 +1229,32 @@ updateRikishi(p) {
         }
         this.isPreviewing = false;
 
-        // ★追加: 視聴のためにメインテーマをミュートしていた場合、フェードインで復帰させる
+        // 視聴のためにメインテーマをミュートしていた場合、フェードインで復帰させる
         if (this.isMutedForPreview && typeof SoundFX !== 'undefined') {
             this.fadeInMainTheme();
             this.isMutedForPreview = false;
         }
     }
 
-    // ★新規: メインテーマを徐々にフェードインさせる処理
+    // メインテーマを徐々にフェードインさせる処理
     fadeInMainTheme() {
-        // ★修正: 元の再生時と同じく bgmVolume * 0.66 を上限（ターゲット）にする
-        const targetVol = SoundFX.bgmVolume * 0.66; 
+        // 元の再生時と同じく bgmVolume * 0.66 を上限（ターゲット）にする
+        const targetVol = SoundFX.bgmVolume * 0.66;
         const fadeStep = targetVol / 20; // 20段階で音量を上げる
-        
+
         const doFade = (audio) => {
             if (!audio || audio.paused) return;
             let currentVol = audio.volume;
-            
+
             const interval = setInterval(() => {
-                currentVol += fadeStep;
-                if (currentVol >= targetVol) {
-                    audio.volume = targetVol;
-                    clearInterval(interval);
-                } else {
-                    audio.volume = currentVol;
-                }
-            }, 50); // 50msごとに音量を上げる (約1秒で元の音量に)
+                    currentVol += fadeStep;
+                    if (currentVol >= targetVol) {
+                        audio.volume = targetVol;
+                        clearInterval(interval);
+                    } else {
+                        audio.volume = currentVol;
+                    }
+                }, 50); // 50msごとに音量を上げる (約1秒で元の音量に)
         };
 
         if (SoundFX.openingAudio) doFade(SoundFX.openingAudio);
@@ -1138,12 +1264,12 @@ updateRikishi(p) {
         const albumView = document.getElementById('album-view');
         const trackView = document.getElementById('track-view');
         const subtitle = document.getElementById('bgm-modal-subtitle');
-        
+
         if (!albumView || !trackView) return;
 
         albumView.style.display = 'block';
         trackView.style.display = 'none';
-        
+
         if (subtitle) subtitle.textContent = '-ALBUM-';
 
         this.renderAlbums();
@@ -1178,41 +1304,41 @@ updateRikishi(p) {
 
         if (typeof ALBUM_DATA !== 'undefined' && ALBUM_DATA.length > 0) {
             const categoriesMap = new Map();
-            
+
             ALBUM_DATA.forEach(alb => {
-                const catName = alb.category || 'その他';
-                if (!categoriesMap.has(catName)) {
-                    categoriesMap.set(catName, { id: alb.categoryId, name: catName, albums: [] });
-                }
-                categoriesMap.get(catName).albums.push(alb);
-            });
+                    const catName = alb.category || 'その他';
+                    if (!categoriesMap.has(catName)) {
+                        categoriesMap.set(catName, { id: alb.categoryId, name: catName, albums: [] });
+                    }
+                    categoriesMap.get(catName).albums.push(alb);
+                });
 
             const sortedCategories = Array.from(categoriesMap.values()).sort((a, b) => a.id - b.id);
 
             sortedCategories.forEach(cat => {
-                html += `<div class="album-category-title">${cat.name}</div>`;
-                html += `<div class="album-grid">`;
-                
-                cat.albums.forEach(alb => {
-                    const isSelected = (alb.id === activeAlbumId);
-                    const highlightClass = isSelected ? 'selected-album' : '';
-                    const imgSrc = alb.img.includes('/') ? alb.img : `assets/img/${alb.img}`;
+                    html += `<div class="album-category-title">${cat.name}</div>`;
+                    html += `<div class="album-grid">`;
 
-                    html += `
+                    cat.albums.forEach(alb => {
+                            const isSelected = (alb.id === activeAlbumId);
+                            const highlightClass = isSelected ? 'selected-album' : '';
+                            const imgSrc = alb.img.includes('/') ? alb.img : `assets/img/${alb.img}`;
+
+                            html += `
                     <div class="album-item ${highlightClass}" onclick="game.ui.renderTracks('${alb.id}')">
                         <img src="${imgSrc}" onerror="this.src='assets/img/rikishiflame.png'">
                         <div>${alb.name}</div>
                     </div>`;
+                        });
+                    html += `</div>`;
                 });
-                html += `</div>`;
-            });
         }
 
         albumContainer.innerHTML = html;
     }
 
     selectRandomAlbum() {
-        // ★修正: ランダム選択時は視聴を止めるが、メインテーマの復帰は行わない
+        // ランダム選択時は視聴を止めるが、メインテーマの復帰は行わない
         if (this.tempSelectedFile !== 'random' && this.isPreviewing) {
             if (this.previewAudio) {
                 this.previewAudio.pause();
@@ -1220,12 +1346,12 @@ updateRikishi(p) {
             }
             this.isPreviewing = false;
         }
-        
+
         this.tempSelectedFile = 'random';
         this.tempSelectedName = 'ランダム (試合ごとにランダム再生)';
-        
-        this.renderAlbums(); 
-        this.updateFixedControls(); 
+
+        this.renderAlbums();
+        this.updateFixedControls();
     }
 
     renderTracks(albumId) {
@@ -1240,7 +1366,7 @@ updateRikishi(p) {
 
         albumView.style.display = 'none';
         trackView.style.display = 'block';
-        
+
         if (subtitle) subtitle.textContent = '-MUSIC-';
 
         let albumName = "曲一覧";
@@ -1248,10 +1374,10 @@ updateRikishi(p) {
             const target = ALBUM_DATA.find(a => a.id === albumId);
             if (target) albumName = target.name;
         }
-        
+
         if (titleDisplay) {
-            // ★修正: アルバムタイトルに「」を付ける
-            titleDisplay.textContent = `「${albumName}」`; 
+            // アルバムタイトルに「」を付ける
+            titleDisplay.textContent = `「${albumName}」`;
         }
 
         let tracks = [];
@@ -1265,20 +1391,20 @@ updateRikishi(p) {
             trackList.innerHTML = '<li class="track-item">曲がありません</li>';
         } else {
             trackList.innerHTML = tracks.map(bgm => {
-                const isSelected = (this.tempSelectedFile === bgm.file);
-                return `
+                    const isSelected = (this.tempSelectedFile === bgm.file);
+                    return `
                 <li class="track-item ${isSelected ? 'selected' : ''}" onclick="game.ui.selectTempTrack('${bgm.file}', '${bgm.name}')">
                     <span class="track-name">${bgm.name}</span>
                 </li>
                 `;
-            }).join('');
+                }).join('');
         }
-        
+
         this.updateFixedControls();
     }
 
     selectTempTrack(file, name) {
-        // ★修正: 別の曲を選んだ時は視聴を止めるが、メインテーマの復帰は行わない
+        // 別の曲を選んだ時は視聴を止めるが、メインテーマの復帰は行わない
         if (this.tempSelectedFile !== file && this.isPreviewing) {
             if (this.previewAudio) {
                 this.previewAudio.pause();
@@ -1286,22 +1412,22 @@ updateRikishi(p) {
             }
             this.isPreviewing = false;
         }
-        
+
         this.tempSelectedFile = file;
         this.tempSelectedName = name;
-        this.renderTracks(this.currentAlbumId); 
+        this.renderTracks(this.currentAlbumId);
     }
 
     updateFixedControls() {
         const footer = document.querySelector('#bgm-modal .modal-footer');
         if (!footer) return;
-        
+
         const isRandom = this.tempSelectedFile === 'random';
         const previewText = this.isPreviewing ? '■ 停止' : '▶ 視聴';
         const previewClass = this.isPreviewing ? 'is-playing' : '';
         const displayName = this.tempSelectedName ? this.tempSelectedName.replace(' (試合ごとにランダム再生)', '') : '未設定';
-        
-        // ★修正: ランダムが選ばれている時は、視聴ボタンのHTML自体を出力しない
+
+        // ランダムが選ばれている時は、視聴ボタンのHTML自体を出力しない
         const previewBtnHtml = isRandom ? '' : `<button class="btn preview-btn ${previewClass}" onclick="game.ui.togglePreview()">${previewText}</button>`;
 
         footer.innerHTML = `
@@ -1328,7 +1454,7 @@ updateRikishi(p) {
             if (typeof SoundFX !== 'undefined') {
                 if (SoundFX.openingAudio) SoundFX.openingAudio.volume = 0;
                 if (SoundFX.charSelectAudio) SoundFX.charSelectAudio.volume = 0;
-                this.isMutedForPreview = true; // ★ミュートフラグをONにする
+                this.isMutedForPreview = true; // ミュートフラグをONにする
 
                 this.previewAudio = new Audio(`assets/bgm/${this.tempSelectedFile}`);
                 this.previewAudio.volume = SoundFX.bgmVolume * 0.66;
@@ -1337,97 +1463,23 @@ updateRikishi(p) {
             }
             this.isPreviewing = true;
         }
-        this.updateFixedControls(); 
+        this.updateFixedControls();
     }
-    // ★修正: シームレスに後ろから追従する本格的なループマーキー
-    checkTextScroll(elementId) {
-        const check = () => {
-            const el = document.getElementById(elementId);
-            if (!el) return;
-            const parent = el.parentElement;
-            
-            if (parent.clientWidth === 0) {
-                setTimeout(check, 50);
-                return;
-            }
-            
-            // 既存のアニメーションをリセット
-            if (el.getAnimations) {
-                el.getAnimations().forEach(anim => anim.cancel());
-            }
-            el.style.transform = 'translateX(0)';
-            el.style.paddingRight = '0px';
-            
-            // アルバムタイトルの配置を一旦中央寄せにリセット
-            if (parent.classList.contains('album-title-wrapper')) {
-                parent.style.justifyContent = 'center';
-            }
-            
-            // 前回の分身（クローン）が残っていたら削除
-            const existingClone = parent.querySelector('.marquee-clone');
-            if (existingClone) existingClone.remove();
-            
-            const sWidth = el.scrollWidth;
-            const cWidth = parent.clientWidth;
-            
-            if (sWidth > cWidth) {
-                // はみ出ている場合、見切れないように左詰めに変更
-                if (parent.classList.contains('album-title-wrapper')) {
-                    parent.style.justifyContent = 'flex-start';
-                }
-                
-                // 1周目の終わりと2周目の始まりの間の「余白」を設定
-                const gap = 50; 
-                el.style.paddingRight = `${gap}px`;
-                const trueWidth = el.scrollWidth; // 余白を含めた正確な幅
-                
-                // 後ろから追いかけてくる分身（クローン）を生成
-                const clone = el.cloneNode(true);
-                clone.id = elementId + '-clone';
-                clone.className = el.className + ' marquee-clone';
-                parent.appendChild(clone);
-                
-                // スピードと時間を計算（1秒間に40px進む）
-                const speed = 40; 
-                const duration = (trueWidth / speed) * 1000;
-                
-                // 自分の幅分だけ左に移動するアニメーション（移動しきると一瞬で0に戻る）
-                const keyframes = [
-                    { transform: 'translateX(0px)' },
-                    { transform: `translateX(-${trueWidth}px)` }
-                ];
-                
-                const timing = {
-                    duration: duration,
-                    iterations: Infinity, // 無限ループ
-                    delay: 1500 // 最初の1.5秒だけ止まって読ませる
-                };
-                
-                if (el.animate) {
-                    el.animate(keyframes, timing);
-                    clone.animate(keyframes, timing);
-                }
-            }
-        };
-        
-        setTimeout(check, 100);
-    }
-
     confirmBgm() {
         if (typeof settings !== 'undefined') {
             settings.current.bgmFile = this.tempSelectedFile;
             settings.save();
         }
-        
-        this.savedBgmFile = this.tempSelectedFile; 
-        
+
+        this.savedBgmFile = this.tempSelectedFile;
+
         if (typeof SoundFX !== 'undefined') {
             SoundFX.selectedBgmFile = this.tempSelectedFile;
         }
 
         this.showBGMToast(`${this.tempSelectedName.replace(' (試合ごとにランダム再生)', '')} をセットしました`);
-        
+
         this.closeBgmModal();
-        this.renderAlbums(); 
+        this.renderAlbums();
     }
 }
