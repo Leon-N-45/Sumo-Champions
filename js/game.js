@@ -991,8 +991,10 @@ class GameManager {
                 const rbVel = 20; // 通常の衝突より強い
                 this.p1.rebound = -1 * rbVel; // P1は左へ
                 this.p2.rebound = 1 * rbVel;  // P2は右へ
-                this.p1.cooldown = 40;
-                this.p2.cooldown = 40;
+                // 相打ちのダウンタイムも各力士のハヤサに応じて変動（基準フレームは通常より長い）
+                const clashBase = cfg('ACTION.BUCHI_CLASH_DOWNTIME_BASE', 40);
+                this.p1.cooldown = this.getBuchiDowntime(s1.speed, clashBase);
+                this.p2.cooldown = this.getBuchiDowntime(s2.speed, clashBase);
 
                 this.checkWin();
                 return;
@@ -1402,6 +1404,16 @@ class GameManager {
         if(def.stamina<=0) { this.resolveMatch(atk, def, 'ko_push'); }
     }
 
+    // ぶちかまし後のダウンタイム（操作不能時間）をハヤサから算出する。
+    // ハヤサに反比例し、基準ハヤサのとき基準フレーム。ハヤサが低いほど長くなる。
+    getBuchiDowntime(speed, base){
+        const baseFrames = (typeof base === 'number') ? base : cfg('ACTION.BUCHI_DOWNTIME_BASE', 20);
+        const refSpeed = cfg('ACTION.BUCHI_DOWNTIME_REF_SPEED', 10);
+        const maxFrames = cfg('ACTION.BUCHI_DOWNTIME_MAX', 120);
+        const spd = Math.max(1, speed || 1);
+        return Math.min(maxFrames, Math.round(baseFrames * refSpeed / spd));
+    }
+
     superPush(atk, def, dir){
         const aStats = atk.getStats(def);
         this.ui.fx(atk, def, 'super');
@@ -1421,6 +1433,9 @@ class GameManager {
 
         const recoveryWait = cfg('STAMINA.RECOVERY_DELAY', 200);
         atk.recoveryDelay = recoveryWait;
+
+        // ぶちかまし後の操作不能ダウンタイムをハヤサに応じて設定（遅い力士ほど長い）
+        atk.cooldown = this.getBuchiDowntime(aStats.speed);
 
         this.ui.msg(atk,"ぶちかまし！");
         this.lastHit = 'thrust';
@@ -1529,7 +1544,7 @@ class GameManager {
 
         atk.animClass = (dir === 1) ? 'thrust-attack-right' : 'thrust-attack-left';
 
-        atk.cooldown = 20;
+        // atk.cooldown は superPush 内でハヤサに応じて設定済み（ここでは上書きしない）
         def.cooldown = 20;
         atk.chargeLock = 40;
 

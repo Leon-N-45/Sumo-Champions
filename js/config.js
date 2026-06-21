@@ -72,6 +72,14 @@ const CONFIG = {
         STUN_TIME_PUSH: 15,     // 元 20
         STUN_TIME_THROW: 30,    // 元 40
 
+        // ぶちかまし後のダウンタイム（攻撃側が動き出せるまでの操作不能フレーム）。
+        // ハヤサに反比例して決まる: cooldown = BASE * REF_SPEED / speed
+        // ハヤサ=REF_SPEED のとき BASE フレーム。ハヤサが下がるほど長くなる。
+        BUCHI_DOWNTIME_BASE: 20,        // 通常ぶちかましの基準フレーム（現状の値）
+        BUCHI_CLASH_DOWNTIME_BASE: 40,  // 相打ち（大激突）の基準フレーム（現状の値）
+        BUCHI_DOWNTIME_REF_SPEED: 10,   // 基準となるハヤサ
+        BUCHI_DOWNTIME_MAX: 120,        // ダウンタイム上限（低ハヤサ時の暴走防止）
+
         SWAP_DIST_NORMAL: 120,
         SWAP_DIST_SUPER: 250   // ACTION_SWAP_DIST_SUPER
     },
