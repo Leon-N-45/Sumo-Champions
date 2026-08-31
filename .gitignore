@@ -361,3 +361,7 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# 手動バックアップ（git履歴が代替するため追跡しない）
+BK/
+backup_*.zip
+zii0pc8g
