@@ -112,7 +112,9 @@
     bottom: -2px;
     width: 30px;
     height: 120%;
-    background-image: url('/assets/img/nawa.png');
+    /* 先頭の / はサイトのルートを指すため、file:// で開いた場合や
+       サブディレクトリ配信では見つからない。相対パスで指定する。 */
+    background-image: url('../assets/img/nawa.png');
     background-size: 300% 200%;
     background-repeat: no-repeat;
     background-color: transparent;
