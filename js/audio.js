@@ -124,6 +124,16 @@ const SoundFX = {
         }
     },
 
+    // タイトルでボタンを押した時のボイス。満員御礼は少し出にくくする（どすこい40%・ごっちゃん40%・満員御礼20%）
+    pickTitleVoice() {
+        const voices = [ { id: 'dosukoi', weight: 40 }, { id: 'gottyan', weight: 40 }, { id: 'maninonrei', weight: 20 } ];
+        let pick = Math.random() * voices.reduce((sum, v) => sum + v.weight, 0);
+        for (const v of voices) {
+            if ((pick -= v.weight) < 0) return v.id;
+        }
+        return voices[0].id;
+    },
+
     // 選曲画面BGMのランダム再生（オープニング曲かキャラ選択曲を50%で選ぶ）
     playRandomSelectBGM() {
         this.stopBGM();

@@ -132,8 +132,7 @@ class GameManager {
         if (seType !== 'none') {
             let soundFile = 'dosukoi';
             if (seType === 'random') {
-                const sounds = ['dosukoi', 'gottyan', 'maninonrei'];
-                soundFile = sounds[Math.floor(Math.random() * sounds.length)];
+                soundFile = SoundFX.pickTitleVoice();
             } else {
                 soundFile = seType;
             }

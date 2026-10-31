@@ -102,6 +102,8 @@ const MenuNav = {
         // 中断メニューは取消でも取組に戻る。設定画面は取消でキャンセルと同じ
         if (screen === 'pause' && action === 'cancel') { game.togglePauseMenu(); return true; }
         if (screen === 'settings' && action === 'cancel') { settings.cancelMenu(); return true; }
+        // 1Pがキーボード・マウスの時は選択中のボタンを出さないので、見えない選択を動かさない
+        if (!this.showsButtonFocus()) return false;
         return this.handleButtons(screen, action);
     },
 
@@ -214,9 +216,14 @@ const MenuNav = {
         return ['p1', 'p2'].some(p => settings.usesCursor(p));
     },
 
+    /** タイトルや中断メニューで選択中のボタンを示すか（1Pの操作方法で決める） */
+    showsButtonFocus() {
+        return settings.usesCursor('p1');
+    },
+
     paintButtons(btns) {
-        // 両者ともマウスで操作する場合、選択中を示す枠は不要
-        const show = this.anyCursorPlayer();
+        // 1Pがキーボード・マウスの場合、選択中のボタンの色付けは不要
+        const show = this.showsButtonFocus();
         btns.forEach((b, i) => b.classList.toggle('nav-focus', show && i === this.focus));
     },
 
