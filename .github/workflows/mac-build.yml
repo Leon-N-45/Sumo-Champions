@@ -1,0 +1,33 @@
+# Mac 用のインストーラー（.dmg）を GitHub の Mac で作る。
+# master に反映するたびに自動で作る（Actions タブの「Run workflow」で手動でも作れる）。
+# 終わったら、その実行の画面下の Artifacts から受け取る。
+name: Mac版を作る
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 準備
+        working-directory: desktop-app
+        run: npm ci
+
+      - name: Mac版を作る（Intel・Apple シリコン両対応）
+        working-directory: desktop-app
+        run: npm run build:mac
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SumoChamp-Wedding-mac
+          path: desktop-app/dist/*.dmg
+          retention-days: 30

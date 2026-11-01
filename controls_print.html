@@ -190,10 +190,30 @@
 
     [hidden] { display: none !important; }
 
+    /*
+     * 2枚取り：A4縦に、A4横の紙をそのまま縮めた（A5横）ものを上下に2枚並べる。
+     * A5はA4のちょうど 1/√2 倍なので、全体を縮めるだけで比率が崩れない。
+     */
+    .duo {
+        position: relative;
+        width: 210mm; height: 297mm;
+        margin: 0 auto 24px;
+        background: var(--paper);
+        overflow: hidden;
+        box-shadow: 0 6px 24px rgba(0,0,0,.35);
+    }
+    .duo .sheet { zoom: 0.70711; margin: 0; box-shadow: none; }
+    .duo .cut {
+        position: absolute; left: 0; right: 0; top: 148.5mm;
+        border-top: 0.3mm dashed #999;
+    }
+
     @media print {
         html, body { background: none; }
         .toolbar { display: none; }
         .sheet { margin: 0; box-shadow: none; }
+        /* ぴったり297mmだと端数で白紙の2枚目が出ることがあるので、わずかに縮める */
+        .duo { margin: 0; box-shadow: none; height: 296mm; }
     }
 </style>
 </head>
@@ -203,8 +223,11 @@
     <span>置く紙の種類：</span>
     <button type="button" data-mode="keyboard" class="on">キーボード</button>
     <button type="button" data-mode="pad">コントローラ</button>
+    <span style="margin-left:14px;">刷り方：</span>
+    <button type="button" data-layout="single" class="on">A4に1枚</button>
+    <button type="button" data-layout="duo">A4に2枚（半分に切る）</button>
     <button type="button" class="print" onclick="window.print()">印刷する</button>
-    <span style="width:100%; text-align:center; font-size:13px; color:#222;">
+    <span id="print-hint" style="width:100%; text-align:center; font-size:13px; color:#222;">
         印刷設定は「A4・横向き・余白なし・背景のグラフィックをオン」にしてください
     </span>
 </div>
@@ -330,14 +353,49 @@
     </div>
 </section>
 
+<div class="duo" id="duo" hidden></div>
+
 <script>
-    // 画面上で「キーボード」「コントローラ」の紙を切り替える（印刷されるのは表示中の1枚）
-    document.querySelectorAll('.toolbar [data-mode]').forEach(btn => {
+    // 画面上で「キーボード」「コントローラ」の紙と、刷り方（1枚／2枚取り）を切り替える
+    // （印刷されるのは表示中のもの）
+    const state = { mode: 'keyboard', layout: 'single' };
+    const pageStyle = document.createElement('style');
+    document.head.appendChild(pageStyle);
+
+    function render() {
+        const single = (state.layout === 'single');
+        document.getElementById('sheet-keyboard').hidden = !(single && state.mode === 'keyboard');
+        document.getElementById('sheet-pad').hidden = !(single && state.mode === 'pad');
+
+        // 2枚取りは、選んでいる紙を複製して上下に並べる
+        const duo = document.getElementById('duo');
+        duo.hidden = single;
+        duo.innerHTML = '';
+        if (!single) {
+            const src = document.getElementById(state.mode === 'pad' ? 'sheet-pad' : 'sheet-keyboard');
+            for (let i = 0; i < 2; i++) {
+                const copy = src.cloneNode(true);
+                copy.removeAttribute('id');
+                copy.hidden = false;
+                duo.appendChild(copy);
+            }
+            const cut = document.createElement('div');
+            cut.className = 'cut';
+            duo.appendChild(cut);
+        }
+
+        pageStyle.textContent = `@page { size: A4 ${single ? 'landscape' : 'portrait'}; margin: 0; }`;
+        document.getElementById('print-hint').textContent = single
+            ? '印刷設定は「A4・横向き・余白なし・背景のグラフィックをオン」にしてください'
+            : '印刷設定は「A4・縦向き・余白なし・背景のグラフィックをオン」にして、真ん中の点線で切ってください';
+    }
+
+    document.querySelectorAll('.toolbar [data-mode], .toolbar [data-layout]').forEach(btn => {
         btn.addEventListener('click', () => {
-            const mode = btn.dataset.mode;
-            document.querySelectorAll('.toolbar [data-mode]').forEach(b => b.classList.toggle('on', b === btn));
-            document.getElementById('sheet-keyboard').hidden = (mode !== 'keyboard');
-            document.getElementById('sheet-pad').hidden = (mode !== 'pad');
+            const key = btn.dataset.mode ? 'mode' : 'layout';
+            state[key] = btn.dataset[key];
+            document.querySelectorAll(`.toolbar [data-${key}]`).forEach(b => b.classList.toggle('on', b === btn));
+            render();
         });
     });
 </script>

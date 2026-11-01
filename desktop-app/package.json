@@ -1,0 +1,68 @@
+{
+  "name": "sumocham-wedding",
+  "version": "1.0.0",
+  "description": "スモチャン 結婚式Ver（Windows・Mac用アプリ）",
+  "author": "Hino-Radio",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win",
+    "build:mac": "electron-builder --mac --universal --publish never"
+  },
+  "build": {
+    "appId": "jp.hinoradio.sumocham.wedding",
+    "productName": "スモチャン 結婚式Ver",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "icon.png"
+    ],
+    "extraResources": [
+      {
+        "from": "../index.html",
+        "to": "game/index.html"
+      },
+      {
+        "from": "../manual.html",
+        "to": "game/manual.html"
+      },
+      {
+        "from": "../js",
+        "to": "game/js"
+      },
+      {
+        "from": "../css",
+        "to": "game/css"
+      },
+      {
+        "from": "../assets",
+        "to": "game/assets"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "スモチャン 結婚式Ver"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "icon.png",
+      "category": "public.app-category.games",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "artifactName": "SumoChamp-Wedding-${version}-mac.${ext}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0"
+  }
+}

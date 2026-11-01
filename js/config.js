@@ -366,9 +366,21 @@ function charTypeAssets(charData) {
     else if (desc.includes('テクニック')) typed = { bg: isLegend ? 'gizyutu2_bg.png' : 'gizyutu1_bg.png', typeImg: 'TypeTech.png' };
     else if (desc.includes('バランス'))   typed = { bg: isLegend ? 'baransu2_bg.png' : 'baransu1_bg.png', typeImg: 'TypeBalance.png' };
     else                                  typed = { bg: '', typeImg: 'TypeBalance.png' };
+
+    // 新郎新婦（日野錦・期待の星）だけは、カード左上の字を「郎」「婦」にする
+    const imgName = (charData.img || '').split('/').pop();
+    const customType = CUSTOM_TYPE_IMAGES.find(([re]) => re.test(imgName));
+    if (customType) typed.typeImg = customType[1];
+
     // 専用背景の重ね合わせは charBgFiles / charBgCss で行う
     return typed;
 }
+
+// カード左上のタイプ画像を力士ごとに差し替える（顔画像のファイル名で判定）
+const CUSTOM_TYPE_IMAGES = [
+    [/^hino\d*\.png$/,  'TypeRo.png'],   // 日野錦
+    [/^kitai\d*\.png$/, 'TypeFu.png'],   // 期待の星
+];
 
 // 力士アイコンを20マスのグリッドへ配置する共通ロジック。
 // 並び順は Characters シートの ID で決まる（ID 0 が左上、以降が右へ）。

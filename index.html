@@ -133,6 +133,7 @@
 
   <div id="start-screen" class="screen active">
     <div id="start-content-wrapper" style="width: 1260px; height: 900px; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); transform-origin: center center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+        <button class="back-to-top-btn quit-btn" onclick="quitGame()">ゲーム終了</button>
         <div class="title-logo-group">
             <img src="assets/img/title.png" alt="スモチャン" class="title-logo">
             <div class="wedding-title-wrap">
@@ -473,6 +474,13 @@
   <script src="js/team_game.js"></script>
   
   <script>
+    // タイトル画面の「ゲーム終了」ボタン。アプリ版はウィンドウを閉じて終了する
+    // （ブラウザは自分で開いたタブしか閉じられないため、閉じられなければ案内を出す）
+    function quitGame() {
+        window.close();
+        setTimeout(() => settings.showToast('ブラウザではタブを閉じて終了してください'), 300);
+    }
+
     // タイトル画面の「団体戦」ボタンから呼ばれる入口
     function startTeamMode() {
         // window.teamGame に統一してガードを入れる
@@ -505,8 +513,7 @@
             unlockAudio(SoundFX.charSelectAudio);
 
             // 1. ボイスの再生（どすこい等のランダム再生）
-            const sounds = ['dosukoi', 'gottyan', 'maninonrei'];
-            const soundFile = sounds[Math.floor(Math.random() * sounds.length)];
+            const soundFile = SoundFX.pickTitleVoice();
             const audio = new Audio(`assets/se/${soundFile}.mp3`);
             audio.volume = SoundFX.voiceVolume !== undefined ? SoundFX.voiceVolume : 1.0;
             audio.play().catch(()=>{});

@@ -563,8 +563,9 @@ const MenuNav = {
 
                     // 力士選択画面では、選んだ力士がいなければ取消の長押しでタイトルへ戻る
                     // （選んでいる時の取消は選び直しだけにして、戻る操作と重ならないようにする）
-                    if (action === 'cancel' && this.isGridScreen(this.currentScreen())
-                        && !this.hasPicked(playerId)) this.startBackHold(playerId);
+                    // タイトルでは取消の長押しでゲームを終了する
+                    if (action === 'cancel' && this.holdsToLeave(this.currentScreen())
+                        && !(this.isGridScreen(this.currentScreen()) && this.hasPicked(playerId))) this.startBackHold(playerId);
 
                     if (action && this.handle(playerId, action)) {
                         e.preventDefault();
@@ -655,11 +656,16 @@ const MenuNav = {
     },
 
     // ---------------------------------------------------------------
-    // 取消の長押しでタイトルへ戻る（力士選択画面のみ）
+    // 取消の長押しで、力士選択画面はタイトルへ戻る・タイトルはゲーム終了
     // ---------------------------------------------------------------
     backHoldMs: 1500,
     _backHold: { p1: null, p2: null },   // 押し始めた時刻
     _backHoldRaf: null,
+
+    /** 取消の長押しで画面を抜けられる画面か */
+    holdsToLeave(screen) {
+        return this.isGridScreen(screen) || screen === 'title';
+    },
 
     /** そのプレイヤーが力士を選んでいるか（団体戦は枠に1人でも入っていれば） */
     hasPicked(playerId) {
@@ -669,9 +675,11 @@ const MenuNav = {
         return game.state.chars[playerId] !== null;
     },
 
-    /** いま表示中の力士選択画面の「戻る」ボタン */
+    /** いま表示中の力士選択画面の「戻る」ボタン（タイトルでは「ゲーム終了」ボタン） */
     backButton() {
-        const screenId = (this.currentScreen() === 'teamSelect') ? 'team-select-screen' : 'char-select-screen';
+        const screen = this.currentScreen();
+        if (screen === 'title') return document.querySelector('#start-screen .quit-btn');
+        const screenId = (screen === 'teamSelect') ? 'team-select-screen' : 'char-select-screen';
         return document.querySelector(`#${screenId} .back-to-top-btn:not(.format-btn)`);
     },
 
@@ -685,16 +693,16 @@ const MenuNav = {
         this._backHold[playerId] = null;
     },
 
-    /** 長押しの進み具合を「戻る」ボタンに紫で塗り、満ちたらタイトルへ戻る */
+    /** 長押しの進み具合を「戻る」「ゲーム終了」ボタンに紫で塗り、満ちたら押す */
     _tickBackHold() {
         this._backHoldRaf = null;
         const starts = ['p1', 'p2'].map(p => this._backHold[p]).filter(t => t !== null);
         const btn = this.backButton();
-        const onGrid = this.isGridScreen(this.currentScreen());
+        const holdable = this.holdsToLeave(this.currentScreen());
 
         // 離した・画面が変わった場合は塗りを消して終わる
-        if (!starts.length || !btn || !onGrid) {
-            if (!onGrid) { this._backHold.p1 = null; this._backHold.p2 = null; }
+        if (!starts.length || !btn || !holdable) {
+            if (!holdable) { this._backHold.p1 = null; this._backHold.p2 = null; }
             document.querySelectorAll('.back-to-top-btn.holding').forEach(b => {
                 b.classList.remove('holding', 'hold-dark');
                 b.style.removeProperty('--hold');
@@ -710,6 +718,9 @@ const MenuNav = {
         if (ratio >= 1) {
             this._backHold.p1 = null; this._backHold.p2 = null;
             btn.click();
+            // ブラウザではゲーム終了で閉じられないことがあるので、塗りを戻しておく
+            btn.classList.remove('holding', 'hold-dark');
+            btn.style.removeProperty('--hold');
             return;
         }
         this._backHoldRaf = requestAnimationFrame(() => this._tickBackHold());
