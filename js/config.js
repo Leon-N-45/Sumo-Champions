@@ -90,7 +90,8 @@ const CONFIG = {
         RINGOUT_PENALTY: 999,
         BASE_PUSH: 5,
         BASE_THROW: 15,
-        BASE_THRUST: 8
+        BASE_THRUST: 8,
+        CLASH_POWER_RATE: 0.5   // シートでは CLASH_POWER_RATE（data.js で読み替える）
     },
 
     // ■ 物理演算 (PHYSICS_...)
@@ -183,8 +184,8 @@ const CONFIG = {
 
     // ■ チャージ設定 (CHARGE_...)
     CHARGE: {
-        THRESHOLDS_SUPER_PUSH: 100, // CHARGE_THRESHOLDS_SUPER_PUSH
-        THRESHOLDS_SUPER_SWAP: 100,
+        // シートの CHARGE_THRESHOLDS_SUPER_PUSH / _SUPER_SWAP がここへ入る
+        THRESHOLDS: { SUPER_PUSH: 50, SUPER_SWAP: 100 },
         BASE_GAIN: 0.5             // CHARGE_BASE_GAIN
     },
 

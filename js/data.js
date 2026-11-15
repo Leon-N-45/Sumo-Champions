@@ -27,9 +27,15 @@ function parseCSV(text) {
  * スプシのキー（例: "ACTION_SPEED_BASE"）を
  * CONFIGオブジェクト（例: CONFIG.ACTION.SPEED_BASE）にマッピングして適用する
  */
+// シートのキー名とプログラム側の置き場所がずれているものの読み替え
+const CONFIG_KEY_ALIASES = {
+    CLASH_POWER_RATE: 'DAMAGE_CLASH_POWER_RATE'
+};
+
 function applyConfigValue(key, value) {
     if (!key || value === "" || isNaN(value)) return;
     const numVal = parseFloat(value);
+    key = CONFIG_KEY_ALIASES[key] || key;
 
     // AIパラメータの特別処理 (AI_LV1_REACTION -> CONFIG.AI.LV1_REACTION)
     if (key.startsWith("AI_LV")) {
