@@ -67,7 +67,7 @@ class TeamUIManager {
 
         const gridSlots = buildCharGridSlots();
 
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < CHAR_GRID.SIZE; i++) {
             const icon = document.createElement('div');
             const charData = gridSlots[i];
             let classes = ['char-select-icon'];
@@ -92,9 +92,9 @@ class TeamUIManager {
                     icon.style.backgroundColor = '#ffffff';
                 }
                 else if (charData.category === "ドリーム") {
+                    // 隠し力士の仕組みはやめ、常に表示する（カテゴリはオーラの見た目に使う）
                     classes.push('cat-dream');
                     icon.style.backgroundColor = '#ffffff';
-                    if (typeof settings !== 'undefined' && !settings.current.dreamUnlocked) classes.push('secret-hidden');
                 }
                 else if (charData.category === "空きスロット") {
                     classes.push('cat-empty', 'inactive');

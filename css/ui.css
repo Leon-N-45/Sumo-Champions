@@ -162,12 +162,13 @@
 /* --- アイコングリッド --- */
 #icon-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);   /* js/config.js の CHAR_GRID.COLS と揃える */
     gap: 10px;
     position: absolute;
     top: 570px !important; /* 位置をpxで固定 */
     left: 50% !important;
-    transform: translate(-50%, -50%) scale(0.95) !important;
+    /* 5列にしたので、左右のカードに重ならないよう少し縮める */
+    transform: translate(-50%, -50%) scale(0.82) !important;
     width: max-content;
     z-index: 20;
     background: none;

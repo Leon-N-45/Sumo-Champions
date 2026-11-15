@@ -25,11 +25,11 @@ const MenuNav = {
         p2: ['Backspace']
     },
 
-    // 力士選択グリッドの構成（CSSの grid-template-columns と揃えること）
-    gridCols: 4,
-    gridSize: 20,
+    // 力士選択グリッドの構成（config.js の CHAR_GRID で決める）
+    gridCols: CHAR_GRID.COLS,
+    gridSize: CHAR_GRID.SIZE,
 
-    cursor: { p1: 0, p2: 3 },   // 力士選択グリッド上の位置
+    cursor: { p1: 0, p2: CHAR_GRID.COLS - 1 },   // 力士選択グリッド上の位置（1Pは左上、2Pは右上から）
     focus: 0,                   // ボタンが並ぶ画面での選択位置
 
     // ---------------------------------------------------------------

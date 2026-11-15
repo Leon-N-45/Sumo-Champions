@@ -7,7 +7,6 @@ class SettingsManager {
         this.defaultSettings = {
             volume: { bgm: 100, se: 100, voice: 100 },
             display: { screenSize: 'responsive' },
-            dreamUnlocked: false,
             // 操作方法。'kbmouse'=キーボードとマウス / 'keyboard'=キーボードのみ / 'gamepad'=コントローラ
             inputMode: { p1: 'kbmouse', p2: 'kbmouse' },
             controls: {

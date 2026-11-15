@@ -555,12 +555,14 @@
         const startWrapper = document.getElementById('start-content-wrapper');
         if (startWrapper) startWrapper.style.transform = `translate(-50%, -50%) scale(${scale})`;
         
+        // 選択画面はカードが基準枠の外へはみ出すため、外枠との余白を別に計算する（config.js）
+        const selectScale = selectScreenScale();
         const selectWrapper = document.getElementById('select-scaling-wrapper');
-        if (selectWrapper) selectWrapper.style.transform = `translate(-50%, -50%) scale(${scale})`;
-        
+        if (selectWrapper) selectWrapper.style.transform = `translate(-50%, -50%) scale(${selectScale})`;
+
         // 団体戦の編成画面も同様に自動拡縮させる
         const teamSelectWrapper = document.getElementById('team-select-scaling-wrapper');
-        if (teamSelectWrapper) teamSelectWrapper.style.transform = `translate(-50%, -50%) scale(${scale})`;
+        if (teamSelectWrapper) teamSelectWrapper.style.transform = `translate(-50%, -50%) scale(${selectScale})`;
 
         // シークレット選出画面も同様に自動拡縮させる
         const teamSecretWrapper = document.getElementById('team-secret-scaling-wrapper');

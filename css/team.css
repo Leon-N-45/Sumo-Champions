@@ -28,14 +28,14 @@
 .team-panel {
     position: absolute !important;
     top: 185px !important;
-    width: 280px !important;
+    width: 365px !important;   /* 中央のアイコン欄との間が空きすぎないよう広めにとる */
     height: 700px !important; /* 固定高 */
     display: flex;
     flex-direction: column;
     align-items: center;
 }
-.p1-team-panel { left: 30px !important; }
-.p2-team-panel { right: 30px !important; }
+.p1-team-panel { left: 15px !important; }
+.p2-team-panel { right: 15px !important; }
 
 /* コスト表示エリア（中央揃え・フォント設定） */
 .team-cost-area {

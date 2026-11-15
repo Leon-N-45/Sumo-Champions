@@ -7,6 +7,7 @@
 // ■ 参照スプレッドシート
 // ------------------------------------------------------------
 // 公開URLに含まれる "2PACX-..." の部分。
+// 編集はこちら: https://docs.google.com/spreadsheets/d/1jyNjo6whQ_zzEDlIpVFNHb2nKfjZgUejTztTYF89puI/edit
 // ============================================================
 const SHEET_ID = '2PACX-1vSvQvaLULzjaLu5XmU5BrsGiuKVjW2I4Gz6M-16NUYVaxsX1V2vrRQWnk6pBdwZy1Sl1N2YMTeyD9q-';
 
@@ -343,19 +344,36 @@ function charTypeAssets(charData) {
     return typed;
 }
 
-// 力士アイコンを20マスのグリッドへ配置する共通ロジック。
+// 力士選択グリッドの大きさ（横の列数 × 縦の段数）。
+// 変えるときは css/ui.css の #icon-grid の grid-template-columns も揃えること。
+const CHAR_GRID = { COLS: 5, ROWS: 5 };
+CHAR_GRID.SIZE = CHAR_GRID.COLS * CHAR_GRID.ROWS;
+
+// 力士選択画面の倍率。横幅で決まる時は「外枠の内側〜カード」と「カード〜アイコン欄」の
+// 余白が同じになるように縮める（カードは基準枠より左右へ10pxはみ出している）。
+// 数値は css/ui.css の値（外枠16px・カード幅400px・左右-10px・アイコン100px・間隔10px・縮小0.82）。
+function selectScreenScale() {
+    const FRAME = 16;
+    const cardSpan = 1260 + 10 * 2;                                       // 左カードの左端〜右カードの右端
+    const gridW = (CHAR_GRID.COLS * 100 + (CHAR_GRID.COLS - 1) * 10) * 0.82;
+    const innerGap = (1260 - gridW) / 2 - (400 - 10);                     // カード〜アイコン欄
+    const byWidth = (window.innerWidth - FRAME * 2) / (cardSpan + innerGap * 2);
+    return Math.min(byWidth, (window.innerHeight - 60) / 900);
+}
+
+// 力士アイコンをグリッドへ配置する共通ロジック。
 // 並び順は Characters シートの ID で決まる（ID 0 が左上、以降が右へ）。
 // 空き番号をつくれば、その位置をマスごと空けられる。
 // ID が空欄の行は準備中の力士として扱い、マスには出さない。
 function buildCharGridSlots() {
-    const gridSlots = new Array(20).fill(null);
+    const gridSlots = new Array(CHAR_GRID.SIZE).fill(null);
     const unplaced = [];
     const conflicts = [];   // IDが重複していて指定位置に置けなかった力士
     const noId = [];        // IDが範囲外の力士
 
     RIKISHI_DATA.forEach(d => {
             if (d.draft) return;
-            const valid = Number.isFinite(d.id) && d.id >= 0 && d.id < 20;
+            const valid = Number.isFinite(d.id) && d.id >= 0 && d.id < CHAR_GRID.SIZE;
             if (valid && gridSlots[d.id] === null) {
                 gridSlots[d.id] = d;
                 return;
@@ -372,12 +390,12 @@ function buildCharGridSlots() {
             'スプレッドシートのID指定に問題があります。空いているマスへ自動配置しました。\n'
             + (conflicts.length ? `  重複: ${conflicts.join(' / ')}\n` : '')
             + (noId.length ? `  範囲外: ${noId.join(' / ')}\n` : '')
-            + '  Charactersシートの ID 列（0〜19で重複なし）を見直してください。'
+            + `  Charactersシートの ID 列（0〜${CHAR_GRID.SIZE - 1}で重複なし）を見直してください。`
         );
     }
 
     let idx = 0;
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < CHAR_GRID.SIZE; i++) {
         if (gridSlots[i] === null && idx < unplaced.length) gridSlots[i] = unplaced[idx++];
     }
     return gridSlots;

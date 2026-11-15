@@ -26,10 +26,7 @@ class UIManager {
         this.bgmToastTimer = null; // BGMトースト用タイマー
 
         this.initSelectScreen();
-        this.inputSequence = [];
-        this.secretCode = ['KeyH', 'KeyI', 'KeyN', 'KeyO'];
 
-        document.addEventListener('keydown', (e) => this.checkSecretInput(e));
         document.addEventListener('keydown', (e) => this.highlightKey(e.code, true));
         document.addEventListener('keyup', (e) => this.highlightKey(e.code, false));
         this.resize();
@@ -382,7 +379,7 @@ class UIManager {
         if (startWrapper) startWrapper.style.transform = `translate(-50%, -50%) scale(${scale})`;
 
         const selectWrapper = document.getElementById('select-scaling-wrapper');
-        if (selectWrapper) selectWrapper.style.transform = `translate(-50%, -50%) scale(${scale})`;
+        if (selectWrapper) selectWrapper.style.transform = `translate(-50%, -50%) scale(${selectScreenScale()})`;
 
         document.querySelectorAll('.pause-box, .settings-scale-wrapper, .modal-window').forEach(box => {
                 box.style.transform = `scale(${uiScale})`;
@@ -908,46 +905,6 @@ class UIManager {
         else el.append(nameNode, nickEl);
     }
 
-    checkSecretInput(e) {
-        this.inputSequence.push(e.code);
-        if (this.inputSequence.length > this.secretCode.length) {
-            this.inputSequence.shift();
-        }
-        if (this.inputSequence.join(',') === this.secretCode.join(',')) {
-            this.toggleDreamCharacters();
-            this.inputSequence = [];
-        }
-    }
-
-    toggleDreamCharacters() {
-        const isUnlocking = !settings.current.dreamUnlocked;
-        settings.current.dreamUnlocked = isUnlocking;
-        settings.save();
-
-        const dreamIcons = document.querySelectorAll('.cat-dream');
-        if (typeof SoundFX !== 'undefined') {
-            if (!SoundFX.ctx) SoundFX.init();
-        }
-
-        if (isUnlocking) {
-            if (typeof SoundFX !== 'undefined') SoundFX.playTone('reversal');
-            dreamIcons.forEach((icon, index) => {
-                    setTimeout(() => {
-                            icon.classList.remove('secret-hidden');
-                            icon.classList.add('secret-reveal');
-                        }, index * 100);
-                });
-            settings.showToast("隠し力士 解禁！");
-        } else {
-            if (typeof SoundFX !== 'undefined') SoundFX.playTone('miss');
-            dreamIcons.forEach((icon) => {
-                    icon.classList.remove('secret-reveal');
-                    icon.classList.add('secret-hidden');
-                });
-            settings.showToast("隠し力士 封印…");
-        }
-    }
-
     initSelectScreen() {
         if (typeof RIKISHI_DATA === 'undefined' || RIKISHI_DATA.length === 0) {
             setTimeout(() => this.initSelectScreen(), 500);
@@ -966,7 +923,7 @@ class UIManager {
         if (!iconGrid) return;
         iconGrid.innerHTML = '';
         const gridSlots = buildCharGridSlots();
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < CHAR_GRID.SIZE; i++) {
             const icon = document.createElement('div');
             const charData = gridSlots[i];
             let classes = ['char-select-icon'];
@@ -990,9 +947,9 @@ class UIManager {
                     icon.style.backgroundColor = '#ffffff';
                 }
                 else if (charData.category === "ドリーム") {
+                    // 隠し力士の仕組みはやめ、常に表示する（カテゴリはオーラの見た目に使う）
                     classes.push('cat-dream');
                     icon.style.backgroundColor = '#ffffff';
-                    if (!settings.current.dreamUnlocked) classes.push('secret-hidden');
                 }
                 else if (charData.category === "空きスロット") {
                     classes.push('cat-empty', 'inactive');

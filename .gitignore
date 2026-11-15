@@ -17,3 +17,4 @@ desktop.ini
 
 # 開発用サーバ設定（各自の環境依存のため共有しない）
 .claude/launch.json
+.claude/devserver.js
