@@ -65,6 +65,12 @@ class TeamGameManager {
         const introOverlay = document.getElementById('day-overlay');
         if (introOverlay) { introOverlay.classList.remove('visible', 'instant'); introOverlay.innerHTML = ''; }
 
+        // ランダムで選んでいた枠は、抽選前の「ランダム」に戻して見せる
+        if (this.state.teamSelection) {
+            this.state.teams = { p1: [...this.state.teamSelection.p1], p2: [...this.state.teamSelection.p2] };
+            this.ui.updateTeamDisplay();
+        }
+
         const curtain = document.getElementById('transition-curtain');
         const gameWrapper = document.getElementById('game-wrapper');
         const isReturningFromGame = gameWrapper && gameWrapper.style.display !== 'none';
@@ -147,6 +153,12 @@ class TeamGameManager {
 
     startTeamMatch() {
         document.getElementById('team-select-screen').classList.remove('active');
+
+        // ランダム枠は、ここで初めて力士を抽選する（重複禁止・コスト上限を守る）。
+        // 取組後に編成画面へ戻った時はランダムのまま見せるため、抽選前の編成を覚えておく
+        this.state.teamSelection = { p1: [...this.state.teams.p1], p2: [...this.state.teams.p2] };
+        this.ui.resolveRandomSlots('p1');
+        this.ui.resolveRandomSlots('p2');
 
         // 取り組み形式を取得（既定は二本先取）
         const ruleSel = document.getElementById('team-rule-select');

@@ -320,7 +320,9 @@ class UIManager {
         // 取組後に戻ってきた場合、直前に使っていた力士を選んだ状態で見せる。
         // そのまま決定すれば同じ顔ぶれで続けられ、変えたい人だけ選び直せばよい。
         ['p1', 'p2'].forEach(pid => {
-                const charId = this.game.state.chars[pid];
+                // ランダムで選んでいた人は、次の取組もランダムのままにする
+                const picked = this.game.state.randomPicked || {};
+                const charId = picked[pid] ? RANDOM_CHAR_ID : this.game.state.chars[pid];
                 // 選び直しではなく表示の復元なので、四股名の呼び上げは鳴らさない
                 if (charId !== null && charId !== undefined) this.game.selectChar(pid, charId, { silent: true });
             });
@@ -927,7 +929,13 @@ class UIManager {
             const icon = document.createElement('div');
             const charData = gridSlots[i];
             let classes = ['char-select-icon'];
-            if (charData) {
+            if (charData && charData.random) {
+                icon.dataset.id = RANDOM_CHAR_ID;
+                icon.title = 'ランダム';
+                icon.style.backgroundImage = `url('${RANDOM_CHAR_IMG}')`;
+                classes.push('char-random');
+            }
+            else if (charData) {
                 icon.dataset.id = charData.id;
                 const bgCss = charBgCss(charData);
 
@@ -975,7 +983,9 @@ class UIManager {
                     if (icon.classList.contains('inactive') || icon.classList.contains('secret-hidden') || !icon.hasAttribute('data-id')) return;
                     e.preventDefault(); isDragging = true; dragId = parseInt(icon.dataset.id); dragSource = 'icon';
                     const charData = RIKISHI_DATA.find(d => d.id === dragId);
-                    ghost.style.backgroundImage = `url('${charData ? this.getImagePath(charData.img) : ""}')`;
+                    const ghostImg = (dragId === RANDOM_CHAR_ID) ? RANDOM_CHAR_IMG
+                                   : charData ? this.getImagePath(charData.img) : '';
+                    ghost.style.backgroundImage = `url('${ghostImg}')`;
                     ghost.style.display = 'block';
                     this.moveGhost(ghost, e.clientX, e.clientY); return;
                 }
@@ -1073,6 +1083,43 @@ class UIManager {
             </div>`;
 
         const controlText = isCPU ? 'CPU' : playerId.toUpperCase();
+
+        // ランダムを選んだ時は、取組が始まるまで誰になるか分からないようにする
+        if (charId === RANDOM_CHAR_ID) {
+            const q = '<span>？</span>';
+            // チャートは六角形の目盛り線だけ残し、能力値の多角形（紫）は出さない
+            const size = 100, center = size / 2, maxR = 40;
+            const radarGuideHtml = `
+            <div class="radar-chart-container">
+                <svg viewBox="0 0 ${size} ${size}" class="radar-svg">
+                    <polygon points="${this._getHexPoints(center, maxR)}" class="radar-guide" />
+                    ${[0, 1, 2, 3, 4, 5].map(i => {
+                        const angle = (Math.PI * 2 / 6) * i - (Math.PI / 2);
+                        return `<line x1="${center}" y1="${center}" x2="${center + maxR * Math.cos(angle)}" y2="${center + maxR * Math.sin(angle)}" class="radar-axis" />`;
+                    }).join('')}
+                    <polygon points="${this._getHexPoints(center, maxR * 0.5)}" class="radar-guide-mid" />
+                </svg>
+            </div>`;
+            container.innerHTML = `${switchHtml}
+            <div class="random-card-fill" style="background-image:url('${RANDOM_CHAR_IMG}');"></div>
+            <div class="preview-char-img is-selected">
+                <img src="assets/img/TypeNazo.png" class="type-kanji-icon" alt="謎">
+            </div>
+            <div class="preview-info">
+                ${radarGuideHtml}
+                <div class="preview-name">ランダム</div>
+                <div class="preview-badge-type">ランダム</div>
+                <div class="preview-badge-ai">ランダム</div>
+                <div class="preview-stat-grid">
+                    ${`<div class="stat-row"><span></span>${q}</div>`.repeat(6)}
+                </div>
+                <div class="preview-badge-control">${controlText}</div>
+                <div class="dosukoi-power-container">
+                    <span class="dosukoi-value">？</span>
+                </div>
+            </div>`;
+            return;
+        }
 
         const typeMap = { "バランスタイプ": "dock-balance", "テクニックタイプ": "dock-tech", "パワータイプ": "dock-power", "スピードタイプ": "dock-speed" };
         let dockClass = '';

@@ -173,7 +173,11 @@ class GameManager {
      *                    （取組後に前回の力士を選び直して見せる時など）
      */
     selectChar(playerId, charId, options = {}) {
+        // ランダムのマスは選んだ時点では力士を決めず、取組開始時に抽選する（startGame）。
+        // 取組後に戻った時もランダムのまま見せるため、ランダムを選んだことを覚えておく
         this.state.chars[playerId] = charId;
+        this.state.randomPicked = this.state.randomPicked || {};
+        this.state.randomPicked[playerId] = (charId === RANDOM_CHAR_ID);
 
         // アイコンの選択状態更新
         document.querySelectorAll('.char-select-icon').forEach(icon => {
@@ -186,8 +190,8 @@ class GameManager {
                 if (this.state.chars.p2 === id) icon.classList.add('p2-active');
             });
 
-        // 音声再生 (キャラ選択時)
-        if (charId !== null && !options.silent) {
+        // 音声再生 (キャラ選択時)。ランダムは名前を明かさないので読み上げない
+        if (charId !== null && charId !== RANDOM_CHAR_ID && !options.silent) {
             const data = RIKISHI_DATA.find(d => d.id === charId);
             if (data && data.voice) SoundFX.playVoice(data.voice);
         }
@@ -336,6 +340,10 @@ class GameManager {
 
     startGame(){
         if (this.state.chars.p1 === null || this.state.chars.p2 === null) return;
+        // 個人戦でランダムを選んでいたら、ここで初めて力士を抽選する（団体戦は編成確定時に抽選済み）
+        ['p1', 'p2'].forEach(pid => {
+                if (this.state.chars[pid] === RANDOM_CHAR_ID) this.state.chars[pid] = pickRandomCharId();
+            });
         // 勝ち抜きの2取組目以降（勝ち残りがいる）はBGMを止めず、1曲を流しっぱなしにする
         const isKachinukiContinue = (this.state.isTeamMode && typeof window.teamGame !== 'undefined'
             && window.teamGame.state.rule === 'kachinuki' && !!window.teamGame.state.kachinuki.carrySide);

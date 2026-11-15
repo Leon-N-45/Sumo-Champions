@@ -362,19 +362,37 @@ function selectScreenScale() {
     return Math.min(byWidth, (window.innerHeight - 60) / 900);
 }
 
+// 一番右下のマスは「ランダム」。選ぶと、選べる力士の中から1人を抽選する。
+const RANDOM_CHAR_ID = -1;
+const RANDOM_CHAR_IMG = 'assets/img/random.png';   // 選曲画面の「ランダム」と同じ画像
+const RANDOM_SLOT = { id: RANDOM_CHAR_ID, random: true };
+const RANDOM_SLOT_INDEX = CHAR_GRID.SIZE - 1;
+
+/**
+ * ランダムのマスが選ばれた時に、実際の力士を抽選して ID を返す。
+ * accept で候補を絞れる（団体戦の重複・コスト上限など）。候補がいなければ null。
+ */
+function pickRandomCharId(accept = () => true) {
+    const pool = buildCharGridSlots({ silent: true })
+        .filter(d => d && !d.random && d.category !== '空きスロット' && accept(d));
+    return pool.length ? pool[Math.floor(Math.random() * pool.length)].id : null;
+}
+
 // 力士アイコンをグリッドへ配置する共通ロジック。
 // 並び順は Characters シートの ID で決まる（ID 0 が左上、以降が右へ）。
 // 空き番号をつくれば、その位置をマスごと空けられる。
 // ID が空欄の行は準備中の力士として扱い、マスには出さない。
-function buildCharGridSlots() {
+// 一番右下はランダム用に空けておく（力士に使えるIDは 0〜SIZE-2）。
+function buildCharGridSlots({ silent = false } = {}) {
     const gridSlots = new Array(CHAR_GRID.SIZE).fill(null);
+    gridSlots[RANDOM_SLOT_INDEX] = RANDOM_SLOT;
     const unplaced = [];
     const conflicts = [];   // IDが重複していて指定位置に置けなかった力士
     const noId = [];        // IDが範囲外の力士
 
     RIKISHI_DATA.forEach(d => {
             if (d.draft) return;
-            const valid = Number.isFinite(d.id) && d.id >= 0 && d.id < CHAR_GRID.SIZE;
+            const valid = Number.isFinite(d.id) && d.id >= 0 && d.id < RANDOM_SLOT_INDEX;
             if (valid && gridSlots[d.id] === null) {
                 gridSlots[d.id] = d;
                 return;
@@ -386,12 +404,12 @@ function buildCharGridSlots() {
 
     // 指定通りに置けなかった力士は空きマスへ順に流し込まれる。
     // 静かに位置がずれると気づきにくいため、原因をコンソールへ出す。
-    if (conflicts.length || noId.length) {
+    if (!silent && (conflicts.length || noId.length)) {
         console.warn(
             'スプレッドシートのID指定に問題があります。空いているマスへ自動配置しました。\n'
             + (conflicts.length ? `  重複: ${conflicts.join(' / ')}\n` : '')
             + (noId.length ? `  範囲外: ${noId.join(' / ')}\n` : '')
-            + `  Charactersシートの ID 列（0〜${CHAR_GRID.SIZE - 1}で重複なし）を見直してください。`
+            + `  Charactersシートの ID 列（0〜${RANDOM_SLOT_INDEX - 1}で重複なし。右下はランダム用）を見直してください。`
         );
     }
 

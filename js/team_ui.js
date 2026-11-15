@@ -32,7 +32,8 @@ class TeamUIManager {
 
     _getCostBadgeHtml(cost, isLarge) {
         let bg = '';
-        if (cost <= 1) bg = '#a1a1aa';
+        if (cost === '?') bg = '#3f3f46';   // ランダム枠（中身が分からない）
+        else if (cost <= 1) bg = '#a1a1aa';
         else if (cost === 2) bg = '#4ade80';
         else if (cost === 3) bg = '#ec4899';
         else if (cost === 4) bg = '#3b82f6';
@@ -73,7 +74,13 @@ class TeamUIManager {
             const charData = gridSlots[i];
             let classes = ['char-select-icon'];
 
-            if (charData) {
+            if (charData && charData.random) {
+                icon.dataset.id = RANDOM_CHAR_ID;
+                icon.title = 'ランダム';
+                icon.style.backgroundImage = `url('${RANDOM_CHAR_IMG}')`;
+                classes.push('char-random');
+            }
+            else if (charData) {
                 icon.dataset.id = charData.id;
                 const bgCss = charBgCss(charData);
                 const faceImg = charData.img.includes('/') ? charData.img : `assets/img/${charData.img}`;
@@ -115,6 +122,55 @@ class TeamUIManager {
         this.updateTeamDisplay();
     }
 
+    // ---------------------------------------------------------------
+    // ランダムの枠
+    // 編成中は「ランダム」のまま置いておき、誰になるかは取組開始時（resolveRandomSlots）に決める。
+    // コスト上限を必ず守れるよう、編成中のランダム枠は「一番安い力士のコスト」で数えておき、
+    // 抽選時は残りのランダム枠の分を差し引いた予算内の力士だけから選ぶ。
+    // ---------------------------------------------------------------
+    get dupOff() {
+        return (document.getElementById('team-dup-select')?.value || 'off') === 'off';
+    }
+
+    /** 編成中の1枠のコスト。ランダム枠は一番安い力士のコストで数える */
+    slotCost(id) {
+        if (id === null || id === undefined) return 0;
+        if (id === RANDOM_CHAR_ID) return this.randomReserveCost();
+        return parseInt(RIKISHI_DATA.find(d => d.id === id)?.['コスト']) || 0;
+    }
+
+    randomReserveCost() {
+        const costs = buildCharGridSlots({ silent: true })
+            .filter(d => d && !d.random && d.category !== '空きスロット')
+            .map(d => parseInt(d['コスト']) || 0);
+        return costs.length ? Math.min(...costs) : 0;
+    }
+
+    teamCost(team) {
+        return team.reduce((s, id) => s + this.slotCost(id), 0);
+    }
+
+    /** チームのランダム枠を、重複禁止とコスト上限を守って実際の力士に置き換える */
+    resolveRandomSlots(player) {
+        const team = this.game.state.teams[player];
+        const randIdx = team.map((id, i) => id === RANDOM_CHAR_ID ? i : -1).filter(i => i >= 0);
+        const reserve = this.randomReserveCost();
+
+        randIdx.forEach((idx, k) => {
+                const laterRandoms = randIdx.length - k - 1;
+                // まだ決まっていない枠を除いた、いま決まっている力士のコスト
+                const fixedCost = team.reduce((s, id, i) =>
+                    s + ((id === null || id === RANDOM_CHAR_ID) ? 0 : this.slotCost(id)), 0);
+                const budget = this.MAX_COST - fixedCost - laterRandoms * reserve;
+                const fits = d => this.MAX_COST >= 99 || (parseInt(d['コスト']) || 0) <= budget;
+                const unique = d => !(this.dupOff && team.includes(d.id));
+
+                team[idx] = pickRandomCharId(d => fits(d) && unique(d))
+                    ?? pickRandomCharId(fits)        // 重複なしで足りない時（候補が極端に少ない時）の保険
+                    ?? pickRandomCharId();
+            });
+    }
+
     initDraggableIcons() {
         let isDragging = false;
         let dragId = null;
@@ -122,8 +178,9 @@ class TeamUIManager {
 
         const startDrag = (id, x, y) => {
             const charData = RIKISHI_DATA.find(d => d.id === id);
-            if (charData) {
-                const faceImg = charData.img.includes('/') ? charData.img : `assets/img/${charData.img}`;
+            if (charData || id === RANDOM_CHAR_ID) {
+                const faceImg = !charData ? RANDOM_CHAR_IMG
+                              : charData.img.includes('/') ? charData.img : `assets/img/${charData.img}`;
                 this.els.ghost.style.backgroundImage = `url('${faceImg}')`;
                 this.els.ghost.style.display = 'block';
                 this.els.ghost.style.width = '120px';
@@ -140,7 +197,8 @@ class TeamUIManager {
                 // 詳細ボタン（gumbai）クリック時はドラッグ判定を行わずクリックを通す
                 if (e.target.closest('.icon-detail-btn')) return;
                 const listIcon = e.target.closest('.char-select-icon');
-                const slotHead = e.target.closest('.team-slot .head');
+                // ランダム枠は顔の代わりにランダムの画像をつかんで動かす
+                const slotHead = e.target.closest('.team-slot .head, .team-slot .random-slot-img');
 
                 if (listIcon && listIcon.hasAttribute('data-id') && !listIcon.classList.contains('inactive') && !listIcon.classList.contains('secret-hidden')) {
                     e.preventDefault();
@@ -199,7 +257,8 @@ class TeamUIManager {
                             const targetIndex = parseInt(slot.dataset.index);
 
                             // 「力士の重複: なし」の場合、同一チーム内に同じ力士は置けない（敵チームとの重複はOK）
-                            const dupOff = (document.getElementById('team-dup-select')?.value || 'off') === 'off';
+                            // ランダムは取組開始時に重ならないよう抽選するので、何枠でも置ける
+                            const dupOff = this.dupOff && dragId !== RANDOM_CHAR_ID;
                             const teamArr = this.game.state.teams[targetPlayer] || [];
                             const isDuplicate = dupOff && teamArr.some((id, i) =>
                                 id === dragId && i !== targetIndex &&
@@ -215,14 +274,10 @@ class TeamUIManager {
                             // コスト上限チェック：この力士を置くとチーム合計コストが上限を超える場合は弾く
                             const costLimit = this.MAX_COST;
                             if (costLimit < 99) {
-                                const costOf = (id) => {
-                                    const c = RIKISHI_DATA.find(d => d.id === id);
-                                    return c ? (parseInt(c['コスト']) || 0) : 0;
-                                };
                                 const proj = (this.game.state.teams[targetPlayer] || []).slice();
                                 if (dragSourceSlot && dragSourceSlot.player === targetPlayer) proj[dragSourceSlot.index] = null;
                                 proj[targetIndex] = dragId;
-                                const projTotal = proj.reduce((s, id) => s + (id != null ? costOf(id) : 0), 0);
+                                const projTotal = this.teamCost(proj);
                                 if (projTotal > costLimit) {
                                     slot.classList.add('dup-reject');
                                     setTimeout(() => slot.classList.remove('dup-reject'), 400);
@@ -257,7 +312,7 @@ class TeamUIManager {
                 if (dragSourceSlot) {
                     const sourceSlotEl = document.getElementById(`${dragSourceSlot.player}-slot-${dragSourceSlot.index}`);
                     if (sourceSlotEl) {
-                        const head = sourceSlotEl.querySelector('.head');
+                        const head = sourceSlotEl.querySelector('.head, .random-slot-img');
                         if (head) head.style.opacity = '1';
                     }
                 }
@@ -282,14 +337,11 @@ class TeamUIManager {
         ['p1', 'p2'].forEach(player => {
                 const team = this.game.state.teams[player];
 
-                // コスト計算
-                let totalCost = 0;
-                team.forEach(charId => {
-                        if (charId !== null) {
-                            const c = RIKISHI_DATA.find(d => d.id === charId);
-                            if (c) totalCost += (parseInt(c['コスト']) || 0);
-                        }
-                    });
+                // コスト計算（ランダム枠は一番安い力士のコストで数える）
+                const totalCost = this.teamCost(team);
+                const hasRandom = team.includes(RANDOM_CHAR_ID);
+                // ランダム枠が1つでもあれば、合計は「?」にして中身が分からないようにする
+                const costLabel = hasRandom ? '?' : `${totalCost}`;
 
                 // ゲージと数値の更新
                 const costValEl = document.getElementById(`${player}-cost-val`);
@@ -297,7 +349,7 @@ class TeamUIManager {
 
                 // 無制限(99)の場合は上限を出さず、コストの合計を「戦力」として表示する
                 if (costValEl) {
-                    costValEl.textContent = this.MAX_COST >= 99 ? `戦力：${totalCost}` : `${totalCost} / ${this.MAX_COST}`;
+                    costValEl.textContent = this.MAX_COST >= 99 ? `戦力：${costLabel}` : `${costLabel} / ${this.MAX_COST}`;
                     costValEl.style.color = (totalCost > this.MAX_COST) ? '#8b0000' : '#ffffff';
                 }
                 if (costBarEl) {
@@ -325,15 +377,17 @@ class TeamUIManager {
 
                         if (charId !== null) {
                             const c = RIKISHI_DATA.find(d => d.id === charId);
-                            const iconEl = document.querySelector(`.char-select-icon[data-id="${charId}"]`);
+                            const iconEl = document.querySelector(`#team-select-screen .char-select-icon[data-id="${charId}"]`);
                             if (iconEl) iconEl.classList.add(`${player}-active`);
 
                             if (currentCharId !== charId) {
                                 slot.classList.add('is-filled');
                                 slot.classList.remove('p1-empty', 'p2-empty');
-                                slot.innerHTML = this._getMiniPreviewHtml(c, player, index);
+                                slot.innerHTML = (charId === RANDOM_CHAR_ID)
+                                    ? this._getRandomSlotHtml(player, index)
+                                    : this._getMiniPreviewHtml(c, player, index);
 
-                                const costValue = parseInt(c['コスト']) || 0;
+                                const costValue = (charId === RANDOM_CHAR_ID) ? '?' : (parseInt(c['コスト']) || 0);
 
                                 const oldBadge = wrapper.querySelector('.cost-badge-wrapper');
                                 if(oldBadge) oldBadge.remove();
@@ -389,27 +443,8 @@ class TeamUIManager {
             bgCss = bgCss ? `${bgCss}, ${fallback}` : fallback;
         }
 
-        // スロット単位のCPU設定
-        const st = this.game && this.game.state ? this.game.state : null;
-        const isCPU = !!(st && st.slotCPU && st.slotCPU[playerId] && st.slotCPU[playerId][slotIndex]);
-        const curLevel = (st && st.slotLevel && st.slotLevel[playerId]) ? st.slotLevel[playerId][slotIndex] : 3;
-        const bodyImg = bodyImageFile(playerId, isCPU, charData);
-
-        const levels = [
-            { v: 7, l: "横綱" }, { v: 6, l: "大関" }, { v: 5, l: "関脇" },
-            { v: 4, l: "小結" }, { v: 3, l: "前頭" }, { v: 2, l: "十両" }, { v: 1, l: "幕下" }
-        ];
-        const options = levels.map(L => `<option value="${L.v}" ${L.v === curLevel ? 'selected' : ''}>${L.l}</option>`).join('');
-        const switchHtml = `
-            <div class="slot-cpu-switch ${isCPU ? 'is-cpu' : ''}" onpointerdown="event.stopPropagation();" onmousedown="event.stopPropagation();">
-                <label class="switch" onpointerdown="event.stopPropagation();">
-                    <input type="checkbox" ${isCPU ? 'checked' : ''} onchange="window.teamGame.ui.toggleSlotCPU('${playerId}', ${slotIndex}, this.checked)">
-                    <span class="slider round"></span>
-                </label>
-                <select class="custom-select slot-cpu-level" style="${isCPU ? '' : 'display:none;'}" onpointerdown="event.stopPropagation();" onchange="window.teamGame.ui.setSlotLevel('${playerId}', ${slotIndex}, this.value)">
-                    ${options}
-                </select>
-            </div>`;
+        const switchHtml = this._slotCpuSwitchHtml(playerId, slotIndex);
+        const bodyImg = bodyImageFile(playerId, this._isSlotCPU(playerId, slotIndex), charData);
 
         return `
             ${switchHtml}
@@ -424,6 +459,44 @@ class TeamUIManager {
             </div>
             <div class="vertical-name"><span class="vertical-main">${charData.name}</span>${charData.nickname ? `<span class="vertical-nickname">${charData.nickname}</span>` : ''}</div>
         `;
+    }
+
+    // ランダム枠の表示。取組開始までは誰か分からないよう、ランダムの画像と名前だけを出す
+    _getRandomSlotHtml(playerId, slotIndex) {
+        return `
+            ${this._slotCpuSwitchHtml(playerId, slotIndex)}
+            <div class="random-slot-fill"></div>
+            <img src="${RANDOM_CHAR_IMG}" class="random-slot-img" alt="ランダム">
+            <div class="vertical-name"><span class="vertical-main">ランダム</span></div>
+        `;
+    }
+
+    _isSlotCPU(playerId, slotIndex) {
+        const st = this.game && this.game.state ? this.game.state : null;
+        return !!(st && st.slotCPU && st.slotCPU[playerId] && st.slotCPU[playerId][slotIndex]);
+    }
+
+    // スロット単位のCPU設定スイッチ
+    _slotCpuSwitchHtml(playerId, slotIndex) {
+        const st = this.game && this.game.state ? this.game.state : null;
+        const isCPU = this._isSlotCPU(playerId, slotIndex);
+        const curLevel = (st && st.slotLevel && st.slotLevel[playerId]) ? st.slotLevel[playerId][slotIndex] : 3;
+
+        const levels = [
+            { v: 7, l: "横綱" }, { v: 6, l: "大関" }, { v: 5, l: "関脇" },
+            { v: 4, l: "小結" }, { v: 3, l: "前頭" }, { v: 2, l: "十両" }, { v: 1, l: "幕下" }
+        ];
+        const options = levels.map(L => `<option value="${L.v}" ${L.v === curLevel ? 'selected' : ''}>${L.l}</option>`).join('');
+        return `
+            <div class="slot-cpu-switch ${isCPU ? 'is-cpu' : ''}" onpointerdown="event.stopPropagation();" onmousedown="event.stopPropagation();">
+                <label class="switch" onpointerdown="event.stopPropagation();">
+                    <input type="checkbox" ${isCPU ? 'checked' : ''} onchange="window.teamGame.ui.toggleSlotCPU('${playerId}', ${slotIndex}, this.checked)">
+                    <span class="slider round"></span>
+                </label>
+                <select class="custom-select slot-cpu-level" style="${isCPU ? '' : 'display:none;'}" onpointerdown="event.stopPropagation();" onchange="window.teamGame.ui.setSlotLevel('${playerId}', ${slotIndex}, this.value)">
+                    ${options}
+                </select>
+            </div>`;
     }
 
     // スロットのCPU切替（体画像・ラベル・段位表示を更新）
@@ -494,9 +567,8 @@ class TeamUIManager {
         const p1Ready = p1Team.every(id => id !== null);
         const p2Ready = p2Team.every(id => id !== null);
 
-        let p1Cost = 0, p2Cost = 0;
-        p1Team.forEach(id => { if(id !== null) p1Cost += (parseInt(RIKISHI_DATA.find(d => d.id === id)?.['コスト']) || 0); });
-        p2Team.forEach(id => { if(id !== null) p2Cost += (parseInt(RIKISHI_DATA.find(d => d.id === id)?.['コスト']) || 0); });
+        const p1Cost = this.teamCost(p1Team);
+        const p2Cost = this.teamCost(p2Team);
 
         const isCostOk = (p1Cost <= this.MAX_COST && p2Cost <= this.MAX_COST);
         const isReady = p1Ready && p2Ready && isCostOk;

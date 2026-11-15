@@ -81,6 +81,22 @@
     opacity: 0.4; z-index: 1;
 }
 
+/* ランダム枠：枠の中いっぱいを画像の地の色で塗り、ランダムの画像を欠けないように置く（つかんで動かせる） */
+.team-slot .random-slot-fill {
+    position: absolute;
+    inset: 0;
+    background: #f0e9d6;
+    z-index: 1;
+}
+.team-slot .random-slot-img {
+    position: absolute;
+    left: 50%; top: 0;
+    height: 100%;
+    transform: translateX(-50%);
+    object-fit: contain;
+    cursor: grab;
+    z-index: 5;
+}
 .team-slot .preview-char-img {
     position: absolute !important;
     width: 300px !important;

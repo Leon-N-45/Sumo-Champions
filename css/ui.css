@@ -353,6 +353,19 @@
     justify-content: center;
 }
 
+/* ランダムを選んだ時のカード：力士の代わりに、カードの黒い枠の中いっぱいにランダムの画像を出す
+   （枠の位置はカード画像 rikishiflame.png の白線の内側に合わせている） */
+.preview-box .random-card-fill {
+    position: absolute;
+    left: 56px; top: 137px;
+    width: 288px; height: 299px;
+    background-color: #f0e9d6;   /* 画像の地の色。端のわずかな余りもなじませる */
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    pointer-events: none;
+}
+
 /* --- 背景（固定・動かない） --- */
 .char-background {
     position: absolute;

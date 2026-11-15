@@ -135,6 +135,7 @@ const MenuNav = {
             const cell = this.gridCells()[this.cursor[playerId]];
             if (!this.isSelectable(cell)) return false;
             const charId = parseInt(cell.dataset.id);
+            // ランダムはそのまま枠に置き、取組開始時に抽選する（team_ui の resolveRandomSlots）
             teamGame.selectTeamChar(playerId, empty, charId);
             this.paintCursors();
             // マウスで枠へ入れた時と同じく、力士名を読み上げる
@@ -474,7 +475,9 @@ const MenuNav = {
 
         const cell = this.gridCells()[this.cursor[playerId]];
         if (!this.isSelectable(cell)) return;
-        game.ui.updatePreview(playerId, parseInt(cell.dataset.id));
+        // ランダムのマスは、決めるまで誰になるか分からないので下見を出さない
+        const charId = parseInt(cell.dataset.id);
+        game.ui.updatePreview(playerId, charId === RANDOM_CHAR_ID ? null : charId);
     },
 
     /**
@@ -650,7 +653,7 @@ const MenuNav = {
         if (!playerId || !settings.usesCursor(playerId)) return false;
 
         const cell = this.gridCells()[this.cursor[playerId]];
-        if (!this.isSelectable(cell)) return false;
+        if (!this.isSelectable(cell) || parseInt(cell.dataset.id) === RANDOM_CHAR_ID) return false;
         teamGame.ui.showCharDetail(parseInt(cell.dataset.id));
         return true;
     },
