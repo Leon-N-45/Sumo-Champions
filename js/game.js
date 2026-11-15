@@ -596,7 +596,8 @@ class GameManager {
         if (typeof SoundFX !== 'undefined') {
             SoundFX.playRandomBGM();
         }
-        const startCalls = [ { id: 'mattanashi', text: '待ったなし！' }, { id: 'kamaete', text: '構えて！' }, { id: 'tewotuite', text: '手を着いて！' }, { id: 'koshiwooroshite', text: '腰を下ろして！' } ];
+        // 取組前の掛け声。5つから同じ確率（各20%）で選ぶ
+        const startCalls = [ { id: 'mattanashi', text: '待ったなし！' }, { id: 'kamaete', text: '構えて！' }, { id: 'tewotuite', text: '手を着いて！' }, { id: 'koshiwooroshite', text: '腰を下ろして！' }, { id: 'zikanippai', text: '時間いっぱい！' } ];
         const selectedCall = startCalls[Math.floor(Math.random() * startCalls.length)];
         // 団体戦の暗幕(maku)演出中は、幕が引け切ってから開始コールを出す
         await this.waitForCurtain();
