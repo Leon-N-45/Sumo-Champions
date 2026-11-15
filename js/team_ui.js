@@ -33,7 +33,8 @@ class TeamUIManager {
     _getCostBadgeHtml(cost, isLarge) {
         let bg = '';
         if (cost <= 1) bg = '#a1a1aa';
-        else if (cost <= 3) bg = '#4ade80';
+        else if (cost === 2) bg = '#4ade80';
+        else if (cost === 3) bg = '#ec4899';
         else if (cost === 4) bg = '#3b82f6';
         else if (cost === 5) bg = '#eab308';
         else bg = '#745399';
