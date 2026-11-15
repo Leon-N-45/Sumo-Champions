@@ -1,27 +1,14 @@
 /**
  * config.js
  * ゲームの設定値、定数、参照URLを管理するファイル
- *
- * 【結婚式Ver】通常版とは別のスプレッドシートを参照します。
  */
 
 // ============================================================
-// ■ 参照スプレッドシートの切り替え
+// ■ 参照スプレッドシート
 // ------------------------------------------------------------
-// 通常版のスプシを「ファイル > コピーを作成」で複製し、
-// 「ファイル > 共有 > ウェブに公開」した後、
-// 公開URLに含まれる "2PACX-..." を SHEET_ID に貼り替えてください。
-//
-// ※ シートのgid（下の SHEET_GID）は複製時に引き継がれますが、
-//    念のため公開URLのgidと一致しているか確認してください。
-// ※ SHEET_ID が通常版のままの間は、起動時にコンソールへ警告を出します。
+// 公開URLに含まれる "2PACX-..." の部分。
 // ============================================================
-
-// 通常版のID。切り替え忘れを検知するために保持しています。
-const NORMAL_SHEET_ID = '2PACX-1vSvQvaLULzjaLu5XmU5BrsGiuKVjW2I4Gz6M-16NUYVaxsX1V2vrRQWnk6pBdwZy1Sl1N2YMTeyD9q-';
-
-// ▼ 結婚式Ver専用スプレッドシート（通常版からの複製・2026-08-31 切替済み）
-const SHEET_ID = '2PACX-1vT4MxPwJQWpSrarh8Wh13CvuNKD7sqAooaFy1AXE1kEpZr-g1VV3rYYTbVxVZz6ui7jjQ9JtR8C3B2e';
+const SHEET_ID = '2PACX-1vSvQvaLULzjaLu5XmU5BrsGiuKVjW2I4Gz6M-16NUYVaxsX1V2vrRQWnk6pBdwZy1Sl1N2YMTeyD9q-';
 
 const SHEET_GID = {
     CONFIG: '1162573541',
@@ -44,7 +31,7 @@ const DATA_URLS = {
 // ■ 無操作時の自動復帰
 // ------------------------------------------------------------
 // タイトル以外の画面で、この秒数だけ操作がなければタイトルへ戻す。
-// 来場者が途中で離れても、次の人がタイトルから始められるようにする。
+// 遊んでいる人が途中で離れても、次の人がタイトルから始められるようにする。
 // 0 にすると無効。
 // ============================================================
 const IDLE_RETURN_SECONDS = 180;
@@ -52,40 +39,30 @@ const IDLE_RETURN_SECONDS = 180;
 // ============================================================
 // ■ 個人戦の取組数
 // ------------------------------------------------------------
-// 結婚式Verでは3番勝負の二本先取に固定する（先に2勝した方が優勝。2勝した時点で終わる）。
-// 1 にすると1番勝負。null にすると、従来どおり相撲形式の画面から選べる。
+// null なら相撲形式の画面から選べる。3 なら3番勝負の二本先取、1 なら1番勝負に固定する。
 // ============================================================
-const FIXED_MATCH_COUNT = 3;
+const FIXED_MATCH_COUNT = null;
 
 // ============================================================
 // ■ 取組中のBGM
 // ------------------------------------------------------------
-// 結婚式Verでは1曲に固定する。空文字にすると従来通り選曲できる。
+// 空文字なら選曲できる。ファイル名を入れるとその1曲に固定する。
 // ============================================================
-const FIXED_BATTLE_BGM = 'bgm11.mp3';
+const FIXED_BATTLE_BGM = '';
 
 // ============================================================
 // ■ オフラインモード
 // ------------------------------------------------------------
-// true  … 通信を一切せず js/data_local.js のデータだけで動く【本番はこちら】
+// true  … 通信を一切せず js/data_local.js のデータだけで動く（ネットのない場所向け）
 // false … スプシを参照する。失敗・遅延した場合は data_local.js へ自動的に退避する
 //
 // スプシを編集したら次を実行して data_local.js を焼き直すこと:
 //     node tools/build_data.js
 // ============================================================
-const OFFLINE_MODE = true;
+const OFFLINE_MODE = false;
 
 // スプシ参照時の打ち切り時間（ミリ秒）。応答が返らないまま起動が止まるのを防ぐ。
 const FETCH_TIMEOUT_MS = 5000;
-
-// 参照先が通常版のままだと、結婚式Verの調整が通常版へ影響してしまうため警告する
-const IS_WEDDING_SHEET_READY = (SHEET_ID !== NORMAL_SHEET_ID);
-if (!IS_WEDDING_SHEET_READY) {
-    console.warn(
-        '[結婚式Ver] 参照先が通常版のスプレッドシートのままです。\n' +
-        'js/config.js の SHEET_ID を結婚式Ver用のIDに差し替えてください。'
-    );
-}
 
 const CONFIG = {
     DEBUG: 0,
@@ -143,11 +120,6 @@ const CONFIG = {
 
         // 硬直時間を短くして、サクサク動けるようにする
         COOLDOWN_TIME: 40,      // 元 60
-        // 押し出し（寄り廃止に伴い追加）。一発ごとに相手を弾き飛ばす。
-        PUSH_COOLDOWN: 26,           // 押した側が次に押せるまでの間
-        PUSH_DEF_COOLDOWN: 18,       // 弾かれた側が動けない時間（rebound はこの間だけ働く）
-        PUSH_REBOUND_VELOCITY: 11,   // 弾き飛ばしの初速
-        PUSH_REBOUND_PWR_RATE: 0.06, // チカラ1につき弾き飛ばしが何割増えるか
         INASHI_DURATION_BASE: 20, // 元 30
         INASHI_TECH_MOD: 2,
         STUMBLE_DURATION: 30,   // 元 45
@@ -367,31 +339,22 @@ function charTypeAssets(charData) {
     else if (desc.includes('バランス'))   typed = { bg: isLegend ? 'baransu2_bg.png' : 'baransu1_bg.png', typeImg: 'TypeBalance.png' };
     else                                  typed = { bg: '', typeImg: 'TypeBalance.png' };
 
-    // 新郎新婦（日野錦・期待の星）だけは、カード左上の字を「郎」「婦」にする
-    const imgName = (charData.img || '').split('/').pop();
-    const customType = CUSTOM_TYPE_IMAGES.find(([re]) => re.test(imgName));
-    if (customType) typed.typeImg = customType[1];
-
     // 専用背景の重ね合わせは charBgFiles / charBgCss で行う
     return typed;
 }
 
-// カード左上のタイプ画像を力士ごとに差し替える（顔画像のファイル名で判定）
-const CUSTOM_TYPE_IMAGES = [
-    [/^hino\d*\.png$/,  'TypeRo.png'],   // 日野錦
-    [/^kitai\d*\.png$/, 'TypeFu.png'],   // 期待の星
-];
-
 // 力士アイコンを20マスのグリッドへ配置する共通ロジック。
 // 並び順は Characters シートの ID で決まる（ID 0 が左上、以降が右へ）。
 // 空き番号をつくれば、その位置をマスごと空けられる。
+// ID が空欄の行は準備中の力士として扱い、マスには出さない。
 function buildCharGridSlots() {
     const gridSlots = new Array(20).fill(null);
     const unplaced = [];
     const conflicts = [];   // IDが重複していて指定位置に置けなかった力士
-    const noId = [];        // IDが未設定、または範囲外の力士
+    const noId = [];        // IDが範囲外の力士
 
     RIKISHI_DATA.forEach(d => {
+            if (d.draft) return;
             const valid = Number.isFinite(d.id) && d.id >= 0 && d.id < 20;
             if (valid && gridSlots[d.id] === null) {
                 gridSlots[d.id] = d;
@@ -408,7 +371,7 @@ function buildCharGridSlots() {
         console.warn(
             'スプレッドシートのID指定に問題があります。空いているマスへ自動配置しました。\n'
             + (conflicts.length ? `  重複: ${conflicts.join(' / ')}\n` : '')
-            + (noId.length ? `  未設定または範囲外: ${noId.join(' / ')}\n` : '')
+            + (noId.length ? `  範囲外: ${noId.join(' / ')}\n` : '')
             + '  Charactersシートの ID 列（0〜19で重複なし）を見直してください。'
         );
     }

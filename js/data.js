@@ -144,6 +144,8 @@ async function loadExternalData() {
                         if (!row['名前'] && !row['Name']) return null;
                         return {
                             id: parseInt(row['ID'] || i),
+                            draft: !String(row['ID'] ?? '').trim(),   // ID が空欄の行は準備中
+
                             name: row['名前'] || "Unknown",
                             nickname: (row['二つ名'] || row['通り名'] || "").trim(), // 名前に添える二つ名
                             img: row['画像ファイル'] || "",

@@ -1,8 +1,8 @@
 {
-  "name": "sumocham-wedding",
-  "version": "1.0.0",
-  "description": "スモチャン 結婚式Ver（Windows・Mac用アプリ）",
-  "author": "Hino-Radio",
+  "name": "sumocham",
+  "version": "20.0.0",
+  "description": "スモチャン -Sumo Champions-（Windows・Mac用アプリ）",
+  "author": "Okami-chan",
   "main": "main.js",
   "private": true,
   "scripts": {
@@ -11,8 +11,8 @@
     "build:mac": "electron-builder --mac --universal --publish never"
   },
   "build": {
-    "appId": "jp.hinoradio.sumocham.wedding",
-    "productName": "スモチャン 結婚式Ver",
+    "appId": "jp.okamichan.sumocham",
+    "productName": "スモチャン",
     "directories": {
       "output": "dist"
     },
@@ -50,7 +50,7 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "スモチャン 結婚式Ver"
+      "shortcutName": "スモチャン"
     },
     "mac": {
       "target": "dmg",
@@ -58,7 +58,7 @@
       "category": "public.app-category.games",
       "identity": "-",
       "hardenedRuntime": false,
-      "artifactName": "SumoChamp-Wedding-${version}-mac.${ext}"
+      "artifactName": "SumoChamp-${version}-mac.${ext}"
     }
   },
   "devDependencies": {

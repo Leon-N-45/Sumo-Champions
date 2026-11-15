@@ -73,7 +73,7 @@ const SoundFX = {
 
         let targetFile = 'random';
 
-        // 結婚式Verは取組中のBGMを1曲に固定している（選曲より優先）
+        // config.js で取組中のBGMを1曲に固定している場合は、選曲より優先する
         if (typeof FIXED_BATTLE_BGM !== 'undefined' && FIXED_BATTLE_BGM) {
             targetFile = FIXED_BATTLE_BGM;
         }

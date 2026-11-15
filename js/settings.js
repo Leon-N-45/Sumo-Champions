@@ -7,6 +7,7 @@ class SettingsManager {
         this.defaultSettings = {
             volume: { bgm: 100, se: 100, voice: 100 },
             display: { screenSize: 'responsive' },
+            dreamUnlocked: false,
             // 操作方法。'kbmouse'=キーボードとマウス / 'keyboard'=キーボードのみ / 'gamepad'=コントローラ
             inputMode: { p1: 'kbmouse', p2: 'kbmouse' },
             controls: {
@@ -35,10 +36,6 @@ class SettingsManager {
                         p2: { ...this.defaultSettings.controls.p2, ...parsed.controls?.p2 }
                     }
                 };
-
-                // 旧バージョンで保存された不要なキーを取り除く
-                // （ドリーム力士の解禁フラグは結婚式Verでは廃止済み）
-                delete this.current.dreamUnlocked;
             } catch(e) { console.error(e); }
         }
 

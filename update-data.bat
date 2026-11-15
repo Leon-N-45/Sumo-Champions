@@ -2,7 +2,7 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 echo ============================================
-echo  Sumo-Champions Wedding
+echo  Sumo-Champions
 echo  Update local data from the spreadsheet
 echo ============================================
 echo.

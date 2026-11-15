@@ -28,6 +28,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SumoChamp-Wedding-mac
+          name: SumoChamp-mac
           path: desktop-app/dist/*.dmg
           retention-days: 30

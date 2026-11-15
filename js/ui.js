@@ -13,6 +13,7 @@ class UIManager {
             ui: document.getElementById('ui-layer'),
             call: document.getElementById('call-display'),
             res: document.getElementById('result-overlay'),
+            grappleInd: document.getElementById('grapple-indicator'),
             dayOverlay: document.getElementById('day-overlay'),
             gyoji: document.getElementById('gyoji-img'),
             p1Name: document.getElementById('p1-name-disp'),
@@ -25,10 +26,10 @@ class UIManager {
         this.bgmToastTimer = null; // BGMトースト用タイマー
 
         this.initSelectScreen();
+        this.inputSequence = [];
+        this.secretCode = ['KeyH', 'KeyI', 'KeyN', 'KeyO'];
 
-        // ドリーム力士の隠しコマンド(H,I,N,O)は結婚式Verでは廃止。
-        // ゲストが偶然入力して演出が暴発するのを防ぐため、判定ごと削除している。
-
+        document.addEventListener('keydown', (e) => this.checkSecretInput(e));
         document.addEventListener('keydown', (e) => this.highlightKey(e.code, true));
         document.addEventListener('keyup', (e) => this.highlightKey(e.code, false));
         this.resize();
@@ -525,6 +526,7 @@ class UIManager {
         this.els.gyoji.classList.remove('flipped', 'gyoji-confused');
         this.els.gyoji.style.transform = 'scaleX(1)';
         this.els.call.style.display = 'none';
+        this.els.grappleInd.style.display = 'none';
         void this.els.stage.offsetWidth;
         // 即リセットを確定させたのちトランジションを元に戻す（取組中の転倒アニメは通常通り効かせる）
         [p1, p2].forEach(p => {
@@ -906,6 +908,46 @@ class UIManager {
         else el.append(nameNode, nickEl);
     }
 
+    checkSecretInput(e) {
+        this.inputSequence.push(e.code);
+        if (this.inputSequence.length > this.secretCode.length) {
+            this.inputSequence.shift();
+        }
+        if (this.inputSequence.join(',') === this.secretCode.join(',')) {
+            this.toggleDreamCharacters();
+            this.inputSequence = [];
+        }
+    }
+
+    toggleDreamCharacters() {
+        const isUnlocking = !settings.current.dreamUnlocked;
+        settings.current.dreamUnlocked = isUnlocking;
+        settings.save();
+
+        const dreamIcons = document.querySelectorAll('.cat-dream');
+        if (typeof SoundFX !== 'undefined') {
+            if (!SoundFX.ctx) SoundFX.init();
+        }
+
+        if (isUnlocking) {
+            if (typeof SoundFX !== 'undefined') SoundFX.playTone('reversal');
+            dreamIcons.forEach((icon, index) => {
+                    setTimeout(() => {
+                            icon.classList.remove('secret-hidden');
+                            icon.classList.add('secret-reveal');
+                        }, index * 100);
+                });
+            settings.showToast("隠し力士 解禁！");
+        } else {
+            if (typeof SoundFX !== 'undefined') SoundFX.playTone('miss');
+            dreamIcons.forEach((icon) => {
+                    icon.classList.remove('secret-reveal');
+                    icon.classList.add('secret-hidden');
+                });
+            settings.showToast("隠し力士 封印…");
+        }
+    }
+
     initSelectScreen() {
         if (typeof RIKISHI_DATA === 'undefined' || RIKISHI_DATA.length === 0) {
             setTimeout(() => this.initSelectScreen(), 500);
@@ -948,10 +990,9 @@ class UIManager {
                     icon.style.backgroundColor = '#ffffff';
                 }
                 else if (charData.category === "ドリーム") {
-                    // 結婚式Verでは隠し力士の仕組みを廃止したため、常に表示する。
-                    // （カテゴリは紫ピンクのオーラを出すための見た目の指定として残している）
                     classes.push('cat-dream');
                     icon.style.backgroundColor = '#ffffff';
+                    if (!settings.current.dreamUnlocked) classes.push('secret-hidden');
                 }
                 else if (charData.category === "空きスロット") {
                     classes.push('cat-empty', 'inactive');

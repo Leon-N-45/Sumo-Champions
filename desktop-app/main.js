@@ -1,4 +1,4 @@
-// スモチャン 結婚式Ver を Windows・Mac のアプリとして動かす入口。
+// スモチャン を Windows・Mac のアプリとして動かす入口。
 // ゲーム本体（index.html など）はそのまま使い、専用の app:// で読み込む。
 // file:// で開くとブラウザの安全制限で一部の演出が効かないため。
 const { app, BrowserWindow, Menu, protocol, net, shell } = require('electron');
@@ -53,7 +53,7 @@ if (!app.requestSingleInstanceLock()) {
             fullscreen: true,
             backgroundColor: '#000000',
             icon: path.join(__dirname, 'icon.png'),
-            title: 'スモチャン 結婚式Ver',
+            title: 'スモチャン',
             webPreferences: { contextIsolation: true }
         });
 
