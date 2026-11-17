@@ -1,0 +1,179 @@
+/* =========================================================
+   遠征（オンライン対戦）  js/online.js
+   1260×900 の基準枠の中に配置し、index.html の initFastScale で拡縮する
+   ========================================================= */
+#expedition-screen, #friend-screen, #friendmode-screen { padding-top: 0; }
+/* 遠征の団体戦：CPUの切り替えとランダムは使えない */
+body.online-mode .slot-cpu-switch { display: none !important; }
+body.online-mode #team-select-screen .char-random { opacity: 0.35; pointer-events: none; }
+/* タイトルの「遠征」は2文字なので、個人戦・団体戦と同じ幅にそろえる */
+#start-btn-group .main-start-btn { min-width: 220px; }
+.net-scaling-wrapper {
+    width: 1260px; height: 900px; position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%); transform-origin: center center; z-index: 10;
+}
+.net-back { left: 40px; right: auto; }
+.net-title {
+    position: absolute; top: 60px; width: 100%; text-align: center;
+    font-family: 'tamanegi', sans-serif; font-size: 4.6rem; color: #111;
+    text-shadow: 3px 3px 0 #d8cdb0;
+}
+.net-menu {
+    position: absolute; top: 360px; width: 100%;
+    display: flex; flex-direction: row; justify-content: center; align-items: center; gap: 30px;
+}
+.net-menu .btn:disabled { opacity: 0.45; cursor: default; }
+/* 遠征の画面のボタンは、タイトルの個人戦・団体戦とまったく同じ大きさ（220×82）にする。
+   文字数が多いので、箱に収まるよう文字だけ少し小さくする */
+.net-menu .main-start-btn {
+    width: 220px; min-width: 220px; height: 82px; padding: 0; box-sizing: border-box;
+    font-size: 1.7rem; white-space: nowrap; letter-spacing: -0.02em;
+}
+.net-note {
+    position: absolute; top: 560px; width: 100%; text-align: center;
+    font-size: 1.15rem; font-weight: bold; color: #555; line-height: 2;
+}
+
+/* --- 相手探し --- */
+#random-screen { padding-top: 0; }
+.net-random-rule {
+    position: absolute; top: 190px; width: 100%; text-align: center;
+    font-size: 1.3rem; font-weight: bold; color: #555;
+}
+.net-searching {
+    position: absolute; top: 360px; width: 100%; display: flex; justify-content: center; gap: 22px;
+}
+.net-searching span {
+    width: 28px; height: 28px; border-radius: 50%; background: #745399;
+    animation: netSearch 1.2s ease-in-out infinite;
+}
+.net-searching span:nth-child(2) { animation-delay: 0.2s; }
+.net-searching span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes netSearch { 0%, 100% { transform: scale(0.5); opacity: 0.3; } 50% { transform: scale(1); opacity: 1; } }
+.net-random-status {
+    position: absolute; top: 450px; width: 100%; text-align: center;
+    font-size: 1.7rem; font-weight: bold; color: #111;
+}
+.net-random-cancel { position: absolute; top: 600px; width: 100%; display: flex; justify-content: center; }
+
+/* --- 取組中に相手の通信が止まった時 --- */
+.net-wait-overlay {
+    position: fixed; inset: 0; z-index: 9500; display: none;
+    align-items: center; justify-content: center; background: rgba(0,0,0,0.35); pointer-events: none;
+}
+.net-wait-overlay.active { display: flex; }
+.net-wait-box {
+    background: #fdfbf5; border: 4px solid #111; border-radius: 8px; padding: 22px 36px; text-align: center;
+    box-shadow: 6px 6px 0 rgba(0,0,0,0.3);
+}
+.net-wait-title { font-size: 1.6rem; font-weight: bold; }
+.net-wait-sec { margin-top: 8px; font-size: 1rem; color: #555; font-weight: bold; }
+
+/* --- 遠征の画面：遠征名・番付・レート --- */
+.net-profile {
+    position: absolute; top: 175px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 24px;
+    background: #fdfbf5; border: 3px solid #111; border-radius: 8px; padding: 10px 22px;
+    box-shadow: 4px 4px 0 rgba(0,0,0,0.15); white-space: nowrap;
+}
+.net-profile-name { font-family: 'Yuji Syuku', serif; font-weight: bold; font-size: 1.2rem; display: flex; align-items: center; gap: 10px; }
+.net-profile-name input {
+    width: 170px; font-size: 1.2rem; font-weight: bold; padding: 4px 8px;
+    border: 2px solid #111; border-radius: 4px; font-family: 'M PLUS Rounded 1c', sans-serif;
+}
+.net-player-rank { display: flex; align-items: baseline; gap: 14px; font-weight: bold; }
+.net-rank-name { font-family: 'tamanegi', sans-serif; font-size: 2rem; color: #745399; }
+.net-rank-rate { font-size: 1.15rem; }
+.net-rank-rec { font-size: 1rem; color: #555; }
+
+/* --- ランダムマッチ・公式戦：力士を選んでから相手を探す --- */
+.prepick-bar, .prepick-hidden-card { display: none; }
+body.prepick-mode .prepick-bar {
+    position: absolute; top: 210px; left: 50%; transform: translateX(-50%); z-index: 60;
+    display: flex; align-items: center; gap: 20px;
+}
+.prepick-title { font-family: 'tamanegi', sans-serif; font-size: 2rem; color: #745399; white-space: nowrap; }
+.prepick-search { font-size: 1.5rem; padding: 8px 36px; }
+.prepick-search:disabled { opacity: 0.4; cursor: default; }
+/* 相手のカードは伏せる */
+body.prepick-mode #preview-p2 { visibility: hidden; }
+body.prepick-mode .prepick-hidden-card {
+    position: absolute; right: -10px; top: 267px; width: 400px; height: 600px; z-index: 40;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+    background: repeating-linear-gradient(45deg, #2a2a2a, #2a2a2a 14px, #333 14px, #333 28px);
+    border: 6px solid #111; border-radius: 14px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+}
+.prepick-q { font-family: 'tamanegi', sans-serif; font-size: 10rem; color: #fff; line-height: 1; text-shadow: 4px 4px 0 #745399; }
+.prepick-note { color: #fff; font-weight: bold; font-size: 1.4rem; text-align: center; line-height: 1.6; }
+body.prepick-mode #char-select-screen .char-random { opacity: 0.35; pointer-events: none; }
+
+/* 三番勝負の後のレートの変化 */
+.net-rate-result { position: relative; z-index: 10; margin-top: 10px; color: #fff; font-weight: bold; font-size: 1.5rem; text-shadow: 2px 2px 0 #000; }
+
+/* 公式戦：強さ50を超える力士は選べないので薄く表示する */
+body.official-mode #char-select-screen .over-official { opacity: 0.25; filter: grayscale(1); pointer-events: none; }
+
+/* --- マッチング --- */
+.net-boxes {
+    position: absolute; top: 200px; left: 0; right: 0;
+    display: flex; justify-content: center; gap: 50px;
+}
+.net-box {
+    width: 420px; padding: 28px 30px; box-sizing: border-box;
+    background: #fdfbf5; border: 4px solid #111; border-radius: 8px; box-shadow: 5px 5px 0 rgba(0,0,0,0.18);
+    display: flex; flex-direction: column; align-items: center; gap: 18px;
+}
+.net-box-title { font-family: 'Yuji Syuku', serif; font-size: 2rem; font-weight: bold; }
+.net-box-desc { font-size: 1.05rem; font-weight: bold; color: #555; }
+.net-room-code {
+    font-family: 'M PLUS Rounded 1c', sans-serif; font-weight: 900; font-size: 4rem; letter-spacing: 0.25em;
+    color: #ccc; padding-left: 0.25em;
+}
+.net-box.waiting .net-room-code { color: #745399; }
+.net-code-input {
+    width: 220px; text-align: center; font-family: 'M PLUS Rounded 1c', sans-serif; font-weight: 900;
+    font-size: 3rem; letter-spacing: 0.2em; padding: 6px 0 6px 0.2em;
+    border: 3px solid #111; border-radius: 6px;
+}
+.net-btn { font-size: 1.4rem; padding: 10px 40px; }
+.net-status {
+    position: absolute; top: 600px; width: 100%; text-align: center;
+    font-size: 1.5rem; font-weight: bold; color: #745399; min-height: 2em;
+}
+.net-test {
+    position: absolute; top: 700px; left: 50%; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    font-weight: bold; color: #555; font-size: 1rem;
+}
+.net-test-title { color: #b45309; }
+.net-test select { font-size: 1rem; padding: 4px 10px; margin-left: 8px; }
+
+/* 音楽プレイヤー（タイトルの「音楽」）：再生／停止・曲の位置のスライダー */
+/*   曲名の長さで並びが変わらないよう、曲名の欄とスライダーは決まった幅にする（長い曲名は「…」で省く） */
+#bgm-modal .player-title {
+    flex: none !important; width: 300px !important; max-width: 300px !important; display: block !important;
+    overflow: hidden !important; white-space: nowrap !important; position: relative;
+}
+/* 長い曲名は電光掲示板のように流す（最初と最後で少し止まる） */
+.player-title-inner { display: inline-block; white-space: nowrap; }
+.player-title-inner.marquee { animation: playerMarquee var(--dur, 6s) linear infinite alternate; }
+@keyframes playerMarquee {
+    0%, 15% { transform: translateX(0); }
+    85%, 100% { transform: translateX(var(--shift, 0)); }
+}
+.player-seek { display: flex; align-items: center; gap: 12px; flex: none; margin-left: auto; }
+.player-play { width: 54px; padding-left: 0; padding-right: 0; text-align: center; }
+.player-seek-bar { flex: none; width: 300px; accent-color: #745399; cursor: pointer; }
+.player-time { color: #fff; font-weight: bold; font-variant-numeric: tabular-nums; min-width: 3em; text-align: center; }
+
+/* 遠征中のつながり方（右下に小さく） */
+.net-conn-badge {
+    position: fixed; right: 10px; bottom: 8px; z-index: 9000; display: none;
+    background: rgba(17,17,17,0.75); color: #fff; font-size: 12px; font-weight: bold;
+    padding: 3px 10px; border-radius: 10px; pointer-events: none;
+}
+body.online-mode .net-conn-badge { display: block; }
+
+/* --- 遠征中の力士選択：CPU の切り替えとランダムは使えない --- */
+body.online-mode .cpu-switch-container { display: none !important; }
+body.online-mode #char-select-screen .char-random { opacity: 0.35; pointer-events: none; }

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>遠征の試験（2画面）</title>
+<style>
+  /* 遠征（オンライン対戦）を1台のパソコンで試すための画面。
+     左右に同じゲームを2つ並べ、部屋を作る側・入る側として動かす。 */
+  html, body { margin: 0; height: 100%; background: #222; }
+  .wrap { display: flex; height: 100%; gap: 4px; }
+  iframe { flex: 1; border: 0; background: #000; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <iframe id="left" src="../index.html"></iframe>
+    <iframe id="right" src="../index.html"></iframe>
+  </div>
+</body>
+</html>

@@ -11,6 +11,8 @@
   <link rel="stylesheet" href="css/ui.css">
   <link rel="stylesheet" href="css/battle.css">
   <link rel="stylesheet" href="css/team.css">
+  <link rel="stylesheet" href="css/create.css">
+  <link rel="stylesheet" href="css/online.css">
 </head>
 <body>
     <div id="sumo-frame"></div>
@@ -142,15 +144,258 @@
                 <div style="display: flex; gap: 30px;">
       <button class="btn main-start-btn" onclick="game.goToCharSelect('2P')">個人戦</button>
 <button class="btn main-start-btn" onclick="startTeamMode()">団体戦</button>
+<button class="btn main-start-btn" onclick="Online.openExpedition()">遠征</button>
   </div>
                 <div style="display: flex; gap: 40px;">
                     <div class="sub-btn-container"><button class="btn sub-btn" onclick="settings.openMenu()">設定</button></div>
+                    <div class="sub-btn-container"><button class="btn sub-btn" onclick="CreateScreen.open()">入門</button><div class="sub-caption">自分の力士を作ろう</div></div>
                     <div class="sub-btn-container"><button class="btn sub-btn" onclick="window.open('manual.html', '_blank')">座学</button><div class="sub-caption">ゲーム説明はこちら</div></div>
+                    <div class="sub-btn-container"><button class="btn sub-btn" onclick="game.ui.openMusicPlayer()">音楽</button><div class="sub-caption">曲を聴く</div></div>
                 </div>
             </div>
         </div>
     </div>
     <div class="version-info">© 2026 Okami-chan All Rights Reserved. Ver.20.0.0</div>
+  </div>
+
+  <!-- 遠征（オンライン対戦）の入口。中身の動きは js/online.js -->
+  <div id="expedition-screen" class="screen">
+    <div class="net-scaling-wrapper">
+      <button class="back-to-top-btn net-back" onclick="Online.backToTitle()">戻る</button>
+      <div class="net-title">遠征</div>
+      <!-- 自分の遠征名と、公式戦の番付・レート -->
+      <div class="net-profile">
+        <label class="net-profile-name">遠征名
+          <input id="net-player-name" type="text" maxlength="10" autocomplete="off" onchange="Online.renamePlayer(this.value)">
+        </label>
+        <div id="net-player-rank" class="net-player-rank"></div>
+      </div>
+      <div class="net-menu">
+        <button class="btn main-start-btn" onclick="Online.openFriendMatch()">フレンドマッチ</button>
+        <button class="btn main-start-btn" onclick="Online.startRandom('free')">ランダムマッチ</button>
+        <button class="btn main-start-btn" onclick="Online.startRandom('official')">公式戦</button>
+      </div>
+      <div class="net-note">
+        フレンドマッチ：部屋番号を教え合って、友達と対戦します<br>
+        ランダムマッチ：力士を選んでから、同じ時間に探している人と三番勝負<br>
+        公式戦：強さ50以下の力士で三番勝負。勝つとレートが上がり、番付が決まります
+      </div>
+    </div>
+  </div>
+
+  <!-- フレンドマッチ：合流したら個人戦・団体戦を選ぶ -->
+  <div id="friendmode-screen" class="screen">
+    <div class="net-scaling-wrapper">
+      <button class="back-to-top-btn net-back" onclick="Online.backToTitle()">戻る</button>
+      <div class="net-title">フレンドマッチ</div>
+      <div id="friendmode-status" class="net-random-rule"></div>
+      <div class="net-menu">
+        <button class="btn main-start-btn" onclick="Online.chooseFriendMode('single')">個人戦</button>
+        <button class="btn main-start-btn" onclick="Online.chooseFriendMode('team')">団体戦</button>
+      </div>
+      <div class="net-note">どちらかが選ぶと、2人とも同じ形式に進みます</div>
+    </div>
+  </div>
+
+  <!-- ランダムマッチ・公式戦の相手探し -->
+  <div id="random-screen" class="screen">
+    <div class="net-scaling-wrapper">
+      <div id="random-title" class="net-title">ランダムマッチ</div>
+      <div id="random-rule" class="net-random-rule"></div>
+      <div class="net-searching"><span></span><span></span><span></span></div>
+      <div id="random-status" class="net-random-status"></div>
+      <div class="net-random-cancel"><button class="btn net-btn" onclick="Online.cancelRandom()">探すのをやめる</button></div>
+    </div>
+  </div>
+
+  <!-- 取組中に相手の通信が止まった時 -->
+  <div id="net-wait-overlay" class="net-wait-overlay">
+    <div class="net-wait-box">
+      <div class="net-wait-title">相手の通信を待っています…</div>
+      <div id="net-wait-sec" class="net-wait-sec"></div>
+    </div>
+  </div>
+
+  <!-- マッチング（部屋を作る／部屋に入る） -->
+  <div id="friend-screen" class="screen">
+    <div class="net-scaling-wrapper">
+      <button class="back-to-top-btn net-back" onclick="Online.backToTitle()">戻る</button>
+      <div class="net-title">フレンドマッチ</div>
+      <div class="net-boxes">
+        <div id="net-create-box" class="net-box">
+          <div class="net-box-title">部屋を作る</div>
+          <div class="net-box-desc">部屋番号を相手に伝えてください</div>
+          <div id="net-room-code" class="net-room-code">----</div>
+          <button class="btn net-btn" onclick="Online.createRoom()">部屋を作る</button>
+        </div>
+        <div class="net-box">
+          <div class="net-box-title">部屋に入る</div>
+          <div class="net-box-desc">相手から聞いた4けたの番号</div>
+          <input id="net-join-code" class="net-code-input" type="text" inputmode="numeric" maxlength="4" placeholder="0000" autocomplete="off">
+          <button class="btn net-btn" onclick="Online.joinRoom()">部屋に入る</button>
+        </div>
+      </div>
+      <div id="net-status" class="net-status"></div>
+      <div class="net-test">
+        <label>つなぎ方
+          <select id="net-mode" class="custom-select" onchange="document.getElementById('net-delay-row').style.display = this.value === 'local' ? '' : 'none'">
+            <option value="net" selected>インターネット</option>
+            <option value="local">同じパソコンの2画面（試験用）</option>
+          </select>
+        </label>
+        <label id="net-delay-row" style="display:none;">通信の遅れ（試験用）
+          <select id="net-delay" class="custom-select">
+            <option value="0">なし</option>
+            <option value="30">30ミリ秒（近所）</option>
+            <option value="60">60ミリ秒（国内の遠く）</option>
+            <option value="120">120ミリ秒（海外）</option>
+            <option value="200">200ミリ秒（かなり遠い）</option>
+          </select>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- 遠征中のつながり方の表示（直接 or サーバー経由） -->
+  <div id="net-conn-badge" class="net-conn-badge"></div>
+
+  <!-- 新力士入門（キャラクリエイト）。中身の動きは js/custom_rikishi.js -->
+  <div id="create-screen" class="screen">
+    <div id="create-scaling-wrapper" style="width: 1260px; height: 900px; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); transform-origin: center center;">
+      <button id="create-back" class="back-to-top-btn">戻る</button>
+      <div class="create-title">入門</div>
+
+      <div class="create-layout">
+        <!-- 左：作った力士の一覧（小さい箱）と、作りかけの力士カード -->
+        <div class="create-left">
+          <div class="create-panel create-list-panel">
+            <div class="create-heading">新弟子一覧 <span id="create-count" class="create-count"></span></div>
+            <div id="create-list" class="create-list"></div>
+          </div>
+          <div id="create-card-wrap" class="create-card-wrap">
+            <div id="preview-create" class="preview-box create-card"></div>
+            <!-- カード右上の白い所：背景を単色にするパレット -->
+            <div id="create-bg-palette" class="create-bg-palette"></div>
+          </div>
+        </div>
+
+        <!-- 中央：顔のお絵かき -->
+        <div id="create-center" class="create-panel create-center parts-mode">
+          <!-- 顔の作り方：パーツを選んで組み立てる／自分で描く（パーツの顔に描き足すこともできる） -->
+          <div class="create-heading create-mode-head">
+            <div class="create-mode-switch">
+              <button id="create-mode-parts" class="create-mode-btn active">パーツで作る</button>
+              <button id="create-mode-draw" class="create-mode-btn">自分で描く</button>
+            </div>
+            <label class="create-guide-label draw-only"><input type="checkbox" id="create-guide-toggle" checked> 下書き線</label>
+          </div>
+          <div class="create-canvas-wrap">
+            <canvas id="create-guide"></canvas>
+            <canvas id="create-canvas"></canvas>
+          </div>
+
+          <!-- パーツで作る -->
+          <div id="create-parts-ui" class="create-parts-ui parts-only">
+            <div id="parts-cats" class="parts-cats"></div>
+            <div id="parts-types" class="parts-types"></div>
+            <div id="parts-colors" class="parts-colors"></div>
+            <div id="parts-sliders" class="parts-sliders"></div>
+            <div class="parts-actions">
+              <button id="parts-random" class="create-tool-btn">おまかせ</button>
+              <button id="parts-reset" class="create-tool-btn">最初に戻す</button>
+            </div>
+          </div>
+
+          <div class="create-tool-row draw-only">
+            <div id="create-tools" class="create-tools">
+              <button class="create-icon-btn active" data-tool="pen" title="ペン">
+                <svg viewBox="0 0 24 24"><path d="M3 21l3.8-1 11.4-11.4a2 2 0 0 0 0-2.8l-1-1a2 2 0 0 0-2.8 0L3 16.2z"/><path d="M13.5 6.5l4 4"/></svg>
+              </button>
+              <button class="create-icon-btn" data-tool="fill" title="塗る">
+                <svg viewBox="0 0 24 24"><path d="M4 11l7-7 8 8-7 7a2 2 0 0 1-2.8 0L4 13.8a2 2 0 0 1 0-2.8z"/><path d="M4 12h15"/><path d="M20.5 16s1.5 2 1.5 3a1.5 1.5 0 0 1-3 0c0-1 1.5-3 1.5-3z" class="fillme"/></svg>
+              </button>
+              <button class="create-icon-btn" data-tool="eraser" title="消しゴム">
+                <svg viewBox="0 0 24 24"><path d="M8 20h12"/><path d="M4.5 14.5l9-9a2 2 0 0 1 2.8 0l3.2 3.2a2 2 0 0 1 0 2.8L12 19H8.5z"/><path d="M9 10l5 5"/></svg>
+              </button>
+              <button class="create-icon-btn" data-tool="move" title="移動（ドラッグで絵をずらす）">
+                <svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/><path d="M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></svg>
+              </button>
+              <button class="create-icon-btn" data-tool="zoom" title="ズーム（下のスライダーで大きさを変える）">
+                <svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5l5 5M7.5 10.5h6M10.5 7.5v6"/></svg>
+              </button>
+            </div>
+            <div class="create-tools">
+              <button class="create-icon-btn" id="create-undo" title="一つ戻す">
+                <svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+              </button>
+              <button class="create-icon-btn" id="create-clear" title="全部消す">
+                <svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M5.5 7l1 13h11l1-13M9 7V4h6v3"/></svg>
+              </button>
+            </div>
+          </div>
+          <!-- ズームの時だけ「太さ」が「縮尺」に変わる（真ん中が今の大きさ、右で大きく・左で小さく） -->
+          <div class="create-size-row draw-only">
+            <span id="create-size-label" class="create-size-label">太さ</span>
+            <input type="range" id="create-size" class="create-range" min="2" max="30" step="1" value="9">
+            <span class="create-size-dot-box"><span id="create-size-dot" class="create-size-dot"></span><span id="create-zoom-val" class="create-zoom-val"></span></span>
+          </div>
+          <div id="create-colors" class="create-colors draw-only"></div>
+        </div>
+
+        <!-- 右：名前と能力（保存・削除のボタンは箱の外の下） -->
+        <div class="create-right-col">
+        <div class="create-panel create-right">
+          <div class="create-field">
+            <label class="create-label" for="create-name">四股名</label>
+            <input id="create-name" class="create-name" type="text" maxlength="8" placeholder="8文字まで" autocomplete="off">
+          </div>
+
+          <div class="create-strength" id="create-strength">
+            <div class="create-strength-head">
+              <span>強さ <b id="create-strength-val">30</b> / 50</span>
+              <button id="create-stats-random" class="create-tool-btn">能力おまかせ</button>
+            </div>
+            <div class="create-strength-bar"><div id="create-strength-fill" class="create-strength-fill"></div></div>
+            <div class="create-strength-foot">
+              <span id="create-type" class="create-type"></span>
+              <span>コスト <b id="create-cost"></b></span>
+            </div>
+          </div>
+
+          <div id="create-stats" class="create-stats"></div>
+
+          <div class="create-body-rows">
+            <div class="create-field">
+              <span class="create-label">身長</span>
+              <input type="range" id="create-height" class="create-range" min="1" max="5" step="1" value="3">
+              <span id="create-height-val" class="create-range-val">3</span>
+            </div>
+            <div class="create-field">
+              <span class="create-label">体重</span>
+              <input type="range" id="create-weight" class="create-range" min="1" max="5" step="1" value="3">
+              <span id="create-weight-val" class="create-range-val">3</span>
+            </div>
+            <div class="create-field"><span class="create-label">思考</span><div id="create-ai" class="create-choices"></div></div>
+          </div>
+        </div>
+        <div class="create-actions">
+          <button id="create-delete" class="btn create-delete-btn">削除</button>
+          <button id="create-save" class="btn create-save-btn">保存</button>
+        </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- はい／いいえの確認（CreateScreen.ask） -->
+    <div id="create-confirm" class="create-confirm">
+      <div class="create-confirm-box">
+        <div id="create-confirm-msg" class="create-confirm-msg"></div>
+        <div class="create-confirm-btns">
+          <button id="create-confirm-cancel" class="btn">やめる</button>
+          <button id="create-confirm-ok" class="btn">はい</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div id="day-overlay"></div>
@@ -307,8 +552,14 @@
                     </div>
                     <div class="popover-row">
                         <label>優勝決定戦モード</label>
-                        <input type="checkbox" id="deuce-check" checked> 
+                        <input type="checkbox" id="deuce-check" checked>
                     </div>
+                    <!-- 能力調整（試験中）：全員の強さを50・コスト2にそろえる。力士の得意・不得意は残す -->
+                    <div class="popover-row">
+                        <label>能力調整 <span style="font-size:0.75em; color:#b45309;">試験中</span></label>
+                        <input type="checkbox" id="adjust-check" onchange="game.onAdjustChanged()">
+                    </div>
+                    <div class="popover-note" style="font-size:0.85rem; color:#555; margin-top:-6px;">全員の強さを50（コスト2）にそろえます。強い力士は弱く、弱い力士は強くなり、得意な能力はそのまま残ります</div>
                     <div class="popover-row" style="display:none;">
                         <label>BGM</label>
                         <select id="bgm-select" class="custom-select" style="max-width: 160px;">
@@ -327,6 +578,16 @@
                 <div id="preview-p2" class="preview-box p2-box"></div>
             </div>
             
+            <!-- ランダムマッチ・公式戦：先に力士を選んでから相手を探す -->
+            <div id="prepick-bar" class="prepick-bar">
+              <div id="prepick-title" class="prepick-title">ランダムマッチ</div>
+              <button id="prepick-search" class="btn prepick-search" disabled onclick="Online.beginSearch()">相手を探す</button>
+            </div>
+            <div class="prepick-hidden-card">
+              <div class="prepick-q">？</div>
+              <div class="prepick-note">相手の力士は<br>取組が始まるまで<br>分かりません</div>
+            </div>
+
             <div id="start-btn-container">
                 <button class="start-big-btn" onclick="game.startGame()">
                     <img src="assets/img/battlestart.png" alt="TORIKUMI！" class="torikumi-img">
@@ -451,6 +712,8 @@
   <script src="js/config.js"></script>
   <script src="js/data_local.js"></script>
   <script src="js/data.js"></script>
+  <script src="js/face_parts.js"></script>
+  <script src="js/custom_rikishi.js"></script>
   <script src="js/settings.js"></script>
   <script src="js/idle.js"></script>
   <script src="js/navigation.js"></script>
@@ -458,6 +721,8 @@
   <script src="js/audio.js"></script>
   <script src="js/player.js"></script>
   <script src="js/ai.js"></script>
+  <script src="js/netplay.js"></script>
+  <script src="js/online.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/game.js"></script>
   <script src="js/team_ui.js"></script>
@@ -554,6 +819,10 @@
         
         const startWrapper = document.getElementById('start-content-wrapper');
         if (startWrapper) startWrapper.style.transform = `translate(-50%, -50%) scale(${scale})`;
+        const createWrapper = document.getElementById('create-scaling-wrapper');
+        if (createWrapper) createWrapper.style.transform = `translate(-50%, -50%) scale(${scale})`;
+        document.querySelectorAll('.net-scaling-wrapper')
+            .forEach(w => { w.style.transform = `translate(-50%, -50%) scale(${scale})`; });
         
         // 選択画面はカードが基準枠の外へはみ出すため、外枠との余白を別に計算する（config.js）
         const selectScale = selectScreenScale();

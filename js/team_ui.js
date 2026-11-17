@@ -30,32 +30,9 @@ class TeamUIManager {
         this.initSelectScreen();
     }
 
+    // コストの八角形バッジ（中身は config.js の costBadgeHtml。個人戦・入門の画面でも同じものを使う）
     _getCostBadgeHtml(cost, isLarge) {
-        let bg = '';
-        if (cost === '?') bg = '#3f3f46';   // ランダム枠（中身が分からない）
-        else if (cost <= 1) bg = '#a1a1aa';
-        else if (cost === 2) bg = '#4ade80';
-        else if (cost === 3) bg = '#ec4899';
-        else if (cost === 4) bg = '#3b82f6';
-        else if (cost === 5) bg = '#eab308';
-        else bg = '#745399';
-
-        const size = isLarge ? 36 : 28;
-        const fontSize = isLarge ? 18 : 14;
-
-        // 位置調整用の変数を追加（ここで好きな位置に動かせます！）
-        // isLarge（編成枠の大きいバッジ）と、そうでない場合（力士一覧の小さいバッジ）で位置を分けます
-        const bottomPos = isLarge ? "13px" : "0px";
-        const rightPos  = isLarge ? "13px" : "0px";
-
-        return `
-        <div style="position:absolute; bottom:${bottomPos}; right:${rightPos}; width:${size}px; height:${size}px; z-index:5; display:flex; align-items:center; justify-content:center;">
-            <svg width="${size}" height="${size}" viewBox="0 0 100 100" style="position:absolute; top:0; left:0; z-index:-1;">
-                <polygon points="30,4 70,4 96,30 96,70 70,96 30,96 4,70 4,30" fill="${bg}" stroke="#000000" stroke-width="8" stroke-linejoin="round" />
-            </svg>
-            <span style="color:#ffffff; font-size:${fontSize}px; font-weight:900; font-family:'M PLUS Rounded 1c', sans-serif; -webkit-text-stroke:1px #000;">${cost}</span>
-        </div>
-        `;
+        return costBadgeHtml(cost, isLarge);
     }
     initSelectScreen() {
         if (typeof RIKISHI_DATA === 'undefined' || RIKISHI_DATA.length === 0) {
@@ -63,6 +40,13 @@ class TeamUIManager {
             return;
         }
 
+        this.renderCharGrid();
+        this.initDraggableIcons();
+        this.updateTeamDisplay();
+    }
+
+    /** 力士アイコンのグリッドを描く（一番下の段は新弟子） */
+    renderCharGrid() {
         const iconGrid = document.querySelector('#team-select-screen #icon-grid') || document.getElementById('icon-grid');
         if (!iconGrid) return;
         iconGrid.innerHTML = '';
@@ -114,12 +98,14 @@ class TeamUIManager {
             } else {
                 classes.push('inactive');
             }
+            if (charData && charData.custom) classes.push('cat-custom');
+            if (isCustomRowIndex(i)) {
+                classes.push('custom-row');
+                if (!charData) icon.innerHTML = '<span class="custom-empty-label">新弟子</span>';
+            }
             icon.className = classes.join(' ');
             iconGrid.appendChild(icon);
         }
-
-        this.initDraggableIcons();
-        this.updateTeamDisplay();
     }
 
     // ---------------------------------------------------------------
@@ -141,7 +127,7 @@ class TeamUIManager {
 
     randomReserveCost() {
         const costs = buildCharGridSlots({ silent: true })
-            .filter(d => d && !d.random && d.category !== '空きスロット')
+            .filter(d => d && !d.random && !d.custom && d.category !== '空きスロット')
             .map(d => parseInt(d['コスト']) || 0);
         return costs.length ? Math.min(...costs) : 0;
     }
@@ -453,7 +439,7 @@ class TeamUIManager {
                 <div class="anim-wrapper ${dockClass}">
                     <div class="rikishi-body" style="${bodyAnimStyle}">
                         <img src="assets/img/${bodyImg}" class="body-img" style="${bodyImgStyle}">
-                        <div class="head" style="background-image:url('assets/img/${charData.img}'); top: ${headTop}px; display: block; width:100px; height:100px; transform: scale(1.15); left:50%; transform-origin: center center; margin-left: -50px; position:absolute;"></div>
+                        <div class="head" style="background-image:url('${charData.img.includes('/') ? charData.img : 'assets/img/' + charData.img}'); top: ${headTop}px; display: block; width:100px; height:100px; transform: scale(1.15); left:50%; transform-origin: center center; margin-left: -50px; position:absolute;"></div>
                     </div>
                 </div>
             </div>
@@ -588,7 +574,9 @@ class TeamUIManager {
                 headerImg.classList.add('ready-aura');
                 headerImg.style.cursor = 'pointer';
                 headerImg.onclick = () => {
-                    this.game.startTeamMatch();
+                    // 遠征では、部屋を作った側のルール（取り組み形式・コスト）で両者同時に始める
+                    if (typeof Online !== 'undefined' && Online.active) Online.requestTeamStart();
+                    else this.game.startTeamMatch();
                 };
             }
 

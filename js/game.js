@@ -46,7 +46,15 @@ class GameManager {
 
         this.aiP1 = new AIController();
         this.aiP2 = new AIController();
+        // 入力の持ち方（オンライン対戦のため、勝敗に関わる入力はすべて1/60秒の刻みの中で読む）
+        //   keys      : いま押されているキー（キーボード・ゲームパッドのイベントで更新）
+        //   tapped    : 前の刻みから今までに「押された」キー。刻みの間で押して放した短い押しも拾うため
+        //   frameKeys : この刻みで使う入力（両力士の操作キーだけ）。ゲームの計算はこれだけを見る
+        //   prevFrameKeys : 1つ前の刻みの入力。押した瞬間（いなし等）の判定に使う
         this.keys = new Set();
+        this.tapped = new Set();
+        this.frameKeys = new Set();
+        this.prevFrameKeys = new Set();
         this.autoAdvanceTimer = null;
         this.finalAdvanceTimer = null;
 
@@ -65,11 +73,13 @@ class GameManager {
                 if (e.code === 'Escape') { this.togglePauseMenu(); }
                 if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
                 this.keys.add(e.code);
-                if (!e.repeat) this.handleActionPress(e.code);
+                // 押した瞬間の操作（いなし等）は、ここでは実行せず次の刻みで処理する（sampleInput）。
+                // 取組中以外（中断メニューの操作など）の押下は、取組の入力として数えない
+                if (!e.repeat && this.state.active && !this.state.paused) this.tapped.add(e.code);
             });
         window.addEventListener('keyup', e=>this.keys.delete(e.code));
         window.addEventListener('blur', () => {
-                this.keys.clear();
+                this.keys.clear(); this.tapped.clear();
                 this.p1.isCharging = false; this.p2.isCharging = false;
                 SoundFX.updateCharge('p1', false, 0); SoundFX.updateCharge('p2', false, 0);
                 SoundFX.updateInashi('p1', false); SoundFX.updateInashi('p2', false);
@@ -96,10 +106,40 @@ class GameManager {
     // ゲームパッドの入力は gamepad.js が実際のキーイベントとして発行するため、
     // 専用の受け口は設けていない（上の keydown / keyup がそのまま処理する）。
 
+    /**
+     * 1刻み分の入力を確定する（updatePhysics の最初に1回だけ呼ぶ）。
+     * ゲームの計算は frameKeys だけを見るので、ここを差し替えればオンライン対戦の入力にもできる。
+     * 前の刻みに無くて今の刻みにあるキーを「押した瞬間」として handleActionPress に渡す。
+     */
+    sampleInput() {
+        const codes = new Set([...Object.values(this.p1.controls), ...Object.values(this.p2.controls)]);
+        const now = new Set();
+        codes.forEach(c => { if (this.keys.has(c) || this.tapped.has(c)) now.add(c); });
+        this.tapped.clear();
+        this.setFrameInput(now);
+    }
+
+    /** いなしをした印（決まり手「いなし」の判定用）を、決めた刻みの数だけ残して消す */
+    tickActionTypes() {
+        [this.p1, this.p2].forEach(p => {
+            if (p.actionTypeTimer > 0 && --p.actionTypeTimer === 0) p.actionType = null;
+        });
+    }
+
+    /** この刻みの入力を決め、押した瞬間の操作を処理する */
+    setFrameInput(now) {
+        const prev = this.frameKeys;
+        this.prevFrameKeys = prev;
+        this.frameKeys = now;
+        now.forEach(c => { if (!prev.has(c)) this.handleActionPress(c); });
+    }
+
     togglePauseMenu() {
         // 力士選出画面〜取組結果画面の一連でのみ開ける。タイトルや各選択画面では開かない。
         const isActive = (id) => { const el = document.getElementById(id); return !!(el && el.classList.contains('active')); };
-        if (isActive('start-screen') || isActive('char-select-screen') || isActive('team-select-screen')) return;
+        if (isActive('start-screen') || isActive('char-select-screen') || isActive('team-select-screen') || isActive('create-screen')) return;
+        // オンライン対戦では止められない（相手の画面は進み続けるため）
+        if (typeof NetSim !== 'undefined' && NetSim.online) return;
         // 中断メニューから設定を開いている間は閉じない（設定が残ったまま取組が再開してしまう）
         if (isActive('settings-modal')) return;
 
@@ -173,6 +213,17 @@ class GameManager {
      *                    （取組後に前回の力士を選び直して見せる時など）
      */
     selectChar(playerId, charId, options = {}) {
+        // 遠征（オンライン対戦）：自分の側しか選べない。相手の側は相手から届いた時だけ変わる。
+        // ランダムは端末ごとに抽選結果が変わってしまうので使えない
+        const online = (typeof Online !== 'undefined' && Online.active);
+        if (online && !options.fromNet) {
+            if (playerId !== Online.side || charId === RANDOM_CHAR_ID) return;
+            // 公式戦は強さ50以下の力士だけ
+            if (Online.official && charId !== null && !Online.officialOk(RIKISHI_DATA.find(d => d.id === charId))) {
+                settings.showToast(`公式戦は強さ${Online.OFFICIAL_LIMIT}以下の力士だけ選べます`);
+                return;
+            }
+        }
         // ランダムのマスは選んだ時点では力士を決めず、取組開始時に抽選する（startGame）。
         // 取組後に戻った時もランダムのまま見せるため、ランダムを選んだことを覚えておく
         this.state.chars[playerId] = charId;
@@ -197,6 +248,8 @@ class GameManager {
         }
 
         this.ui.updatePreview(playerId, charId);
+        // 遠征：自分で選んだ力士を相手に知らせる
+        if (online && !options.fromNet) Online.sendSelect(charId);
 
         // マウスで選んだ場合もカーソルを選出先へ合わせる。
         // 位置がずれたままだと、次にコントローラを触った時にカーソルが飛ぶ。
@@ -221,9 +274,10 @@ class GameManager {
                 headerImg.src = "assets/img/torikumikaishi.png";
                 headerImg.classList.add('ready-aura'); // CSSで定義したオーラアニメーション
 
-                // クリックイベント
+                // クリックイベント（遠征では、部屋を作った側の設定で両者同時に始める）
                 headerImg.onclick = () => {
-                    this.startGame();
+                    if (online) Online.requestStart();
+                    else this.startGame();
                 };
             }
 
@@ -263,6 +317,33 @@ class GameManager {
             // 旧ボタン非表示のまま
             if (oldBtnContainer) oldBtnContainer.style.display = 'none';
         }
+        // 遠征：案内の文を「自分の力士を選べ／相手を待っています」に差し替える
+        if (online) Online.updateSelectGuide();
+    }
+
+    // ---------------------------------------------------------------
+    // 能力調整（個人戦の試験的なルール）
+    // 全員の強さを50（コスト2）にそろえる。力士の得意・不得意（能力の高い低い）は残す。
+    // ---------------------------------------------------------------
+    /** 能力調整を使うか（個人戦の「相撲形式」で選ぶ。団体戦では使わない） */
+    statAdjustOn() {
+        if (this.state.isTeamMode) return false;
+        return !!document.getElementById('adjust-check')?.checked;
+    }
+
+    /** 能力調整をかけた力士データ（元のデータは変えない） */
+    adjustedChar(d) {
+        if (!d || !this.statAdjustOn()) return d;
+        const adj = adjustToStrength(d, 50);
+        return { ...d, ...adj, total: calcStrength(adj), 'コスト': 2 };
+    }
+
+    /** 能力調整を入れた・切った時：アイコンのコストとカードの能力を描き直す */
+    onAdjustChanged() {
+        this.ui.renderCharGrid();
+        ['p1', 'p2'].forEach(pid => {
+            if (this.state.chars[pid] !== null) this.ui.updatePreview(pid, this.state.chars[pid]);
+        });
     }
 
     // 個人戦プレビューの CPU トグル切替（p1/p2 共通）
@@ -289,6 +370,9 @@ class GameManager {
         this.transitionAction = null;
         this.state.aborted = true;
         if (this.callHideTimer) clearTimeout(this.callHideTimer);
+        if (this.ui) this.ui.resetCameraZoom(true);
+        SoundFX.endFinisherAudio();
+        this.finisherHoldUntil = 0;
 
         if (this.ui && this.ui.els) {
             if (this.ui.els.dayOverlay) this.ui.els.dayOverlay.classList.remove('visible', 'instant');
@@ -340,6 +424,7 @@ class GameManager {
 
     startGame(){
         if (this.state.chars.p1 === null || this.state.chars.p2 === null) return;
+        if (this.ui) this.ui.resetCameraZoom(true);
         // 個人戦でランダムを選んでいたら、ここで初めて力士を抽選する（団体戦は編成確定時に抽選済み）
         ['p1', 'p2'].forEach(pid => {
                 if (this.state.chars[pid] === RANDOM_CHAR_ID) this.state.chars[pid] = pickRandomCharId();
@@ -395,13 +480,17 @@ class GameManager {
             this.state.matches = FIXED_MATCH_COUNT;
             this.state.deuce = false;
         }
+        // 遠征のランダムマッチ・公式戦は「先に二勝」の三番勝負
+        this.state.firstTo = (typeof Online !== 'undefined' && Online.active && Online.mode !== 'friend');
 
         if (this.state.isTeamMode) {
             this.state.matches = 1; // 団体戦は1取組ずつ進行する
             this.state.deuce = false;
         }
-        let p1IsCPU = document.getElementById('cpu-toggle-p1')?.checked || false;
-        let p2IsCPU = document.getElementById('cpu-toggle-p2')?.checked || false;
+        // 遠征（オンライン対戦）は人どうしなので CPU は使わない
+        const onlineMatch = (typeof Online !== 'undefined' && Online.active);
+        let p1IsCPU = !onlineMatch && (document.getElementById('cpu-toggle-p1')?.checked || false);
+        let p2IsCPU = !onlineMatch && (document.getElementById('cpu-toggle-p2')?.checked || false);
         let p1Level = parseInt(document.getElementById('cpu-level-p1')?.value || 3);
         let p2Level = parseInt(document.getElementById('cpu-level-p2')?.value || 3);
         // 団体戦：出場中の力士のスロット設定（人間/CPU・段位）で上書き
@@ -411,8 +500,9 @@ class GameManager {
             p1Level = this.state.teamCPUOverride.p1.level;
             p2Level = this.state.teamCPUOverride.p2.level;
         }
-        const p1Data = RIKISHI_DATA.find(d=>d.id===this.state.chars.p1);
-        const p2Data = RIKISHI_DATA.find(d=>d.id===this.state.chars.p2);
+        // 能力調整（個人戦）を使う時は、強さ50にそろえた能力で戦う
+        const p1Data = this.adjustedChar(RIKISHI_DATA.find(d=>d.id===this.state.chars.p1));
+        const p2Data = this.adjustedChar(RIKISHI_DATA.find(d=>d.id===this.state.chars.p2));
         // 画像パスの補正
         const getImg = (img) => this.ui.getImagePath(img);
         const p1DataFixed = { ...p1Data, img: getImg(p1Data.img) };
@@ -457,6 +547,12 @@ class GameManager {
 
     async startMatch(skipFadeIn = false){
         if(this.autoAdvanceTimer) { clearInterval(this.autoAdvanceTimer); this.autoAdvanceTimer = null; }
+        // オンライン対戦：取組ごとに刻みの番号を0からやり直す（両者で同じ順に呼ばれる）
+        if (typeof NetSim !== 'undefined' && NetSim.online) NetSim.nextBout();
+        // 前の取組でとどめのズームが残っていれば、次の取組の前に戻す
+        this.ui.resetCameraZoom(true);
+        SoundFX.endFinisherAudio();
+        this.finisherHoldUntil = 0;
 
         // エフェクト削除
         const stage = document.getElementById('stage');
@@ -505,7 +601,7 @@ class GameManager {
         this.grapple = { active: false, master: null, slave: null };
         this.state.processingEnd = false;
         this.lastHit = null;
-        this.keys.clear();
+        this.keys.clear(); this.tapped.clear();
 
         this.aiP1.reset(); this.aiP2.reset();
         this.aiP1.aiKeys.clear(); this.aiP2.aiKeys.clear();
@@ -607,7 +703,7 @@ class GameManager {
             this.ui.showBGMToast(SoundFX.currentTrackName);
         }
         this.ui.els.call.innerHTML = selectedCall.text;
-        this.keys.clear();
+        this.keys.clear(); this.tapped.clear();
         await SoundFX.playVoice(selectedCall.id);
 
         // 追加: 音声再生後にも休場チェック
@@ -662,7 +758,13 @@ class GameManager {
 
         // 修正：タイマー＆アクション実行処理
         if (this.state.processingEnd && this.transitionTimer > 0) {
-            this.transitionTimer--; // 1フレーム減らす
+            // 必殺技のとどめの動きを見せている間は、待ち時間を進めない
+            if (this.finisherHoldUntil && performance.now() < this.finisherHoldUntil) {
+                // まだ待つ
+            } else {
+                this.finisherHoldUntil = 0;
+                this.transitionTimer--; // 1フレーム減らす
+            }
 
             // 時間が来たら...
             if (this.transitionTimer <= 0) {
@@ -720,10 +822,24 @@ class GameManager {
     // 物理・ゲームロジックのみを行うメソッド（1フレーム分の処理）
     updatePhysics() {
         if (this.ui.els.wrapper.style.display === 'none') return;
+        // オンライン対戦中は、刻みの進め方（相手の入力待ち・巻き戻し）を NetSim に任せる
+        if (typeof NetSim !== 'undefined' && NetSim.online) { NetSim.tick(this); return; }
+        // この刻みの入力を確定（押した瞬間の操作もここで処理される）
+        this.sampleInput();
+        this.simStep();
+    }
+
+    /**
+     * 1刻み分のゲームの計算。入力は setFrameInput / sampleInput で先に決めておくこと。
+     * オンライン対戦の巻き戻し（同じ刻みを計算し直す）でもこれを呼ぶので、
+     * ここから先では時計・乱数・キーを直接読まないこと（勝敗に関わらない見た目だけは可）。
+     */
+    simStep() {
+        this.tickActionTypes();
         if (this.state.tachiai) {
-            let p1Ready = [...this.keys].some(k => Object.values(this.p1.controls).includes(k));
+            let p1Ready = [...this.frameKeys].some(k => Object.values(this.p1.controls).includes(k));
             if(this.p1.isCPU) p1Ready = true;
-            let p2Ready = [...this.keys].some(k => Object.values(this.p2.controls).includes(k));
+            let p2Ready = [...this.frameKeys].some(k => Object.values(this.p2.controls).includes(k));
             if(this.p2.isCPU) p2Ready = true;
 
             if (p1Ready && p2Ready) {
@@ -814,7 +930,10 @@ class GameManager {
             // ※ここではreturnせず、下の入力監視を通してから return するように変更！
         }
 
-        const press = code => p.isCPU ? aiKeys?.has(code) : this.keys.has(code);
+        const press = code => p.isCPU ? aiKeys?.has(code) : this.frameKeys.has(code);
+        // 溜めボタンを押しているか。ゲージは放しても残るため、必殺技（ぶちかまし・掴み投げ）は
+        // 「溜めボタンを押している間」だけ出せるようにする
+        p.holdingCharge = !!press(k.d);
 
         const stats = p.getStats(opp);
         const hitDist = cfg('GAME_RULES.HIT_DIST', 100);
@@ -938,7 +1057,10 @@ class GameManager {
 
         if (charging) {
             const techRate = cfg('STATUS.TECH_CHARGE_RATE', 0.25);
-            const gain = (cfg('CHARGE.BASE_GAIN', 0.3)) * (1 + (stats.tech - 5) * techRate);
+            let gain = (cfg('CHARGE.BASE_GAIN', 0.3)) * (1 + (stats.tech - 5) * techRate);
+            // 溜めながら横に動いている間は、ゲージの増え方を遅くする（溜め移動が強すぎるため）
+            const isMoving = (wantsFwd && !wantsBack && !isTouching) || wantsBack;
+            if (isMoving) gain *= cfg('ACTION.CHARGE_MOVE_GAIN_RATE', 0.5);
             p.charge = Math.min(100, p.charge + gain);
 
             const costVal = cfg('STAMINA.CHARGE_COST', 0.5);
@@ -947,9 +1069,9 @@ class GameManager {
             if (p.stamina <= 0.0) {
                 p.stamina = 0; p.charge = 0; p.chargeLock = 40; charging = false;
             }
-        } else {
-            p.charge = 0;
         }
+        // 溜めボタンを放しても、ゲージは0に戻さずその量のまま残す
+        // （ぶちかまし・掴み投げで使った時や、スタミナ切れの時だけ減る）
         p.isCharging = charging;
         SoundFX.updateCharge(p.id, charging, p.charge);
 
@@ -1001,9 +1123,9 @@ class GameManager {
             // 追加: 立ち合いでの「ぶちかまし」判定
             const buchiThresh = cfg('CHARGE.THRESHOLDS.SUPER_PUSH', 50);
 
-            // 【修正点】: チャージ量に加え、isPushing（相手方向への移動入力）がある場合のみ発動
-            const p1Buchi = this.p1.charge >= buchiThresh && this.p1.isPushing && this.p1.cooldown <= 0 && this.p1.stun <= 0;
-            const p2Buchi = this.p2.charge >= buchiThresh && this.p2.isPushing && this.p2.cooldown <= 0 && this.p2.stun <= 0;
+            // チャージ量に加え、溜めボタンを押しながら相手方向へ移動している場合のみ発動
+            const p1Buchi = this.p1.charge >= buchiThresh && this.p1.holdingCharge && this.p1.isPushing && this.p1.cooldown <= 0 && this.p1.stun <= 0;
+            const p2Buchi = this.p2.charge >= buchiThresh && this.p2.holdingCharge && this.p2.isPushing && this.p2.cooldown <= 0 && this.p2.stun <= 0;
 
             if (p1Buchi && p2Buchi) {
                 // ■ パターン1: 両者とも条件達成 -> 相打ち（大激突）
@@ -1012,6 +1134,7 @@ class GameManager {
 
                 this.ui.fx(this.p1, this.p2, 'super'); // ド派手なエフェクト
                 SoundFX.playHit(true);
+                SoundFX.playShout('dosukoi');
 
                 this.ui.msg(this.p1, "ぶちかまし！");
                 this.ui.msg(this.p2, "ぶちかまし！");
@@ -1182,7 +1305,8 @@ class GameManager {
     triggerInashiSuccess(p, opp) {
         SoundFX.updateInashi(p.id, false, true);
         p.inashiTimer = 0;
-        p.lastParry = Date.now();
+        // 時計の時刻は端末ごとに違うため使わない（オンライン対戦で両者の計算がずれる）。どこからも読まれていない印
+        p.lastParry = 1;
         this.ui.fx(p, opp, 'parry');
         SoundFX.playTone('parry');
         this.ui.msg(p, "いなし！", false, true);
@@ -1227,7 +1351,7 @@ class GameManager {
 
         const mFacing = (m.x < s.x) ? 1 : -1;
         const getInput = (p, keys, isAI, aiKeys) => {
-            const source = isAI ? aiKeys : this.keys;
+            const source = isAI ? aiKeys : this.frameKeys;
             const facing = (p.x < (p===m?s.x:m.x)) ? 1 : -1;
             return {
                 wantsFwd: facing===1 ? source.has(keys.r) : source.has(keys.l),
@@ -1241,6 +1365,7 @@ class GameManager {
 
         // master/slave 共通のチャージ処理（挙動は従来と完全に同一）
         const applyGrappleCharge = (p, pStats, input) => {
+            p.holdingCharge = input.wantsCharge;
             const thresh = p.isCharging ? 0.0 : 3.0;
             if (input.wantsCharge && p.stamina > thresh && p.chargeLock === 0) {
                 const baseGain = cfg('CHARGE.BASE_GAIN', 0.3);
@@ -1256,7 +1381,8 @@ class GameManager {
                     p.charge = 0; p.chargeLock = 40; p.isCharging = false;
                 }
             } else {
-                p.charge = 0; p.isCharging = false;
+                // 寄り中も、溜めボタンを放したらゲージはその量のまま残す
+                p.isCharging = false;
             }
         };
         applyGrappleCharge(m, mStats, mInput);
@@ -1294,7 +1420,7 @@ class GameManager {
             });
 
         if (m.isCPU && mInput.wantsTech) {
-            if (m.charge >= 100) { this.handleGrappleCounter(m, s, 'throw'); return; }
+            if (m.charge >= 100 && mInput.wantsCharge) { this.handleGrappleCounter(m, s, 'throw'); return; }
         }
 
         if (mInput.wantsFwd) {
@@ -1319,33 +1445,34 @@ class GameManager {
             const k = s === this.p1 ? p1AIKeys : p2AIKeys;
 
             // ■ 上キー (Tech) は「投げ (100%)」専用
+            // 必殺技は、溜めボタンを押している時だけ出る
+            const holding = sInput.wantsCharge;
             if (k.has(s.controls.u)) {
-                if(s.charge >= 100) {
+                if(s.charge >= 100 && holding) {
                     this.handleGrappleCounter(s, m, 'throw');
                 }
-                // チャージ50%のぶちかまし判定はここじゃないので削除！
-                // いなし(else)も削除済みなので、100%未満で上キーを押しても何も起きない（正解）
+                // いなし(else)は削除済みなので、100%未満で上キーを押しても何も起きない
             }
-            // ■ 前キー (Forward) で「ぶちかまし (50%)」または「押し返し」
+            // ■ 溜め＋前キーで「ぶちかまし (50%)」
             else if (s.x < m.x ? k.has(s.controls.r) : k.has(s.controls.l)) {
-                // ここで handleGrappleCounter が呼ばれ、チャージが50%あれば
-                // 内部で自動的に superPush (ぶちかまし) になるはずです
-                this.handleGrappleCounter(s, m, 'push');
+                if (s.charge >= 50 && holding) this.handleGrappleCounter(s, m, 'push');
             }
         }
     }
     handleGrappleInput(code) {
         const s = this.grapple.slave; const m = this.grapple.master;
+        // 必殺技は、溜めボタンを押している時だけ出る（ゲージは放しても残るため）
+        const holding = (p) => this.frameKeys.has(p.controls.d);
         if(!m.isCPU) {
-            if (this.isPlayerControl(m, code, 'u')) { if (m.charge >= 100) this.handleGrappleCounter(m, s, 'throw'); }
-            if (this.isPlayerControl(m, code, 'fwd')) { if (m.charge >= 50) this.handleGrappleCounter(m, s, 'push'); }
+            if (this.isPlayerControl(m, code, 'u')) { if (m.charge >= 100 && holding(m)) this.handleGrappleCounter(m, s, 'throw'); }
+            if (this.isPlayerControl(m, code, 'fwd')) { if (m.charge >= 50 && holding(m)) this.handleGrappleCounter(m, s, 'push'); }
         }
         if (s && !s.isCPU) {
             if (this.isPlayerControl(s, code, 'u')) {
-                if (s.charge >= 100) this.handleGrappleCounter(s, m, 'throw');
+                if (s.charge >= 100 && holding(s)) this.handleGrappleCounter(s, m, 'throw');
                 else this.handleInashi(s, m);
             }
-            if (this.isPlayerControl(s, code, 'fwd')) { if (s.charge >= 50) this.handleGrappleCounter(s, m, 'push'); }
+            if (this.isPlayerControl(s, code, 'fwd')) { if (s.charge >= 50 && holding(s)) this.handleGrappleCounter(s, m, 'push'); }
         }
     }
 
@@ -1360,7 +1487,8 @@ class GameManager {
 
         const superSwapThresh = cfg('CHARGE.THRESHOLDS.SUPER_SWAP', 100);
 
-        if(p.charge >= superSwapThresh) {
+        // 掴み投げは、ゲージが満タンで溜めボタンを押しながら、いなしを入れた時だけ出る
+        if(p.charge >= superSwapThresh && p.holdingCharge) {
             // ... (スーパー入れ替えの処理はそのまま) ...
             const swapCost = cfg('STAMINA.SUPER_SWAP_COST', 50);
             if(p.stamina < swapCost) return;
@@ -1377,25 +1505,18 @@ class GameManager {
             const throwRange = cfg('GAME_RULES.THROW_RANGE', 110);
             const currentDist = Math.abs(p.x - opp.x);
 
-            SoundFX.playVoice('dosukoi');
-            SoundFX.playHit(true);
-
-            p.animClass = (p.x < opp.x) ? 'throw-posture-left' : 'throw-posture-right';
-
             if (currentDist <= throwRange + 30) {
+                // 掛け声・構え・飛ばされる動きは superSwap の中で出す
                 this.superSwap(p, opp);
                 p.cooldown = 20;
                 opp.cooldown = 20;
             } else {
+                // 届かなかった（空振り）
+                SoundFX.playShout('dosukoi');
+                SoundFX.playHit(true);
+                this.showSpecialPose(p, (p.x < opp.x) ? 'throw-posture-left' : 'throw-posture-right', 'throw-finish-motion');
                 p.cooldown = 40;
             }
-
-            setTimeout(() => {
-                    p.animClass = null;
-                    p.el.classList.remove('throw-posture-left', 'throw-posture-right');
-                    p.el.classList.add('throw-finish-motion');
-                    setTimeout(() => p.el.classList.remove('throw-finish-motion'), 200);
-                }, 300);
 
             return;
         }
@@ -1413,7 +1534,8 @@ class GameManager {
         p.el.classList.add('inashi-active');
 
         p.actionType = 'inashi';
-        setTimeout(() => p.actionType = null, p.inashiTimer * 16);
+        // 決まり手の判定に使うので、時計ではなく刻み（フレーム）で数えて消す（tickActionTypes）
+        p.actionTypeTimer = p.inashiTimer;
     }
 
     normalPush(atk, def, dir){
@@ -1468,6 +1590,7 @@ class GameManager {
         const backRate = cfg('STATUS.SP_SELF_BACK_RATE', 0.2);
         const dist = baseDist + (aStats.power * rateDist);
 
+        const defFromX = def.x;
         def.x += dist * dir; atk.x += (dist * backRate) * dir;
 
         const cost = cfg('STAMINA.SUPER_PUSH_COST', 5);
@@ -1496,6 +1619,11 @@ class GameManager {
         def.stamina = Math.min(def.stamina, def.maxStamina);
         def.stun = cfg('ACTION.STUN_TIME_PUSH', 100);
         atk.chargeLock = def.stun;
+
+        // 見た目だけ、元の場所から左右に回りながら飛ばされる様子を見せる（位置・判定はここで確定済み）
+        this.presentSpecialMove(atk, def, 'thrust', defFromX,
+            (dir === 1) ? 'thrust-attack-right' : 'thrust-attack-left', 'thrust-finish-motion');
+
         if(def.stamina<=0) { this.resolveMatch(atk, def, 'ko_thrust'); }
     }
 
@@ -1518,6 +1646,9 @@ class GameManager {
         const distRate = cfg('ACTION.THROW_DIST_RATE', 4.0);
         const dist = baseDist + (tStats.power * distRate);
 
+        const victimFromX = victim.x;
+        // 投げる側は、相手と反対側へのけぞる（バックドロップの形）
+        const throwPose = (dir === 1) ? 'throw-posture-left' : 'throw-posture-right';
         victim.x = thrower.x - (dist * dir);
 
         const cost = cfg('STAMINA.SUPER_SWAP_COST', 10);
@@ -1541,6 +1672,10 @@ class GameManager {
         victim.stamina = Math.min(victim.stamina, victim.maxStamina);
         victim.stun = cfg('ACTION.STUN_TIME_THROW', 150);
         thrower.chargeLock = victim.stun;
+
+        // 見た目だけ、一回転しながら背後へ飛ばされる様子を見せる（位置・判定はここで確定済み）
+        this.presentSpecialMove(thrower, victim, 'throw', victimFromX, throwPose, 'throw-finish-motion');
+
         if(victim.stamina<=0) { this.resolveMatch(thrower, victim, 'ko_throw'); }
     }
     isPlayerControl(p, code, action) {
@@ -1559,54 +1694,50 @@ class GameManager {
 
         if (type === 'throw') {
             this.endGrapple();
+            // 掛け声・構え・飛ばされる動きは superSwap の中で出す
             this.superSwap(atk, def);
-
-            SoundFX.playVoice('dosukoi');
-            SoundFX.playHit(true);
-
-            atk.animClass = (atk.x < def.x) ? 'throw-posture-right' : 'throw-posture-left';
 
             atk.cooldown = 20;
             def.cooldown = 20;
             atk.chargeLock = 60;
-
-            setTimeout(() => {
-                    atk.animClass = null;
-                    atk.el.classList.remove('throw-posture-left', 'throw-posture-right');
-                    atk.el.classList.add('throw-finish-motion');
-                    setTimeout(() => atk.el.classList.remove('throw-finish-motion'), 300);
-                }, 400);
 
             return;
         }
 
         this.endGrapple();
         const dir = (atk.x < def.x) ? 1 : -1;
+        // 突進の構えは superPush の中で見せる
         this.superPush(atk, def, dir);
 
         atk.x -= 20 * dir;
 
-        atk.animClass = (dir === 1) ? 'thrust-attack-right' : 'thrust-attack-left';
-
         // atk.cooldown は superPush 内でハヤサに応じて設定済み（ここでは上書きしない）
         def.cooldown = 20;
         atk.chargeLock = 40;
+    }
 
-        setTimeout(() => {
-                atk.animClass = null;
-                atk.el.classList.remove('thrust-attack-right', 'thrust-attack-left');
-                atk.el.classList.add('thrust-finish-motion');
-                setTimeout(() => {
-                        atk.el.classList.remove('thrust-finish-motion');
-                    }, 200);
-            }, 150);
+    /**
+     * 必殺技を出した側の構え（のけぞり・突進）を、決めた時間だけ見せてから戻す。
+     * 見た目だけの動きで、操作できるようになるタイミング（cooldown）は変えない。
+     */
+    showSpecialPose(p, poseClass, finishClass, slow = 1) {
+        if (typeof NetSim !== 'undefined' && NetSim.defer(this, 'showSpecialPose', arguments)) return;
+        p.animClass = poseClass;
+        if (p.poseTimer) clearTimeout(p.poseTimer);
+        p.poseTimer = setTimeout(() => {
+                p.poseTimer = null;
+                if (p.animClass === poseClass) p.animClass = null;
+                p.el.classList.remove(poseClass);
+                p.el.classList.add(finishClass);
+                setTimeout(() => p.el.classList.remove(finishClass), 350);
+            }, cfg('UI.SPECIAL_POSE_MS', 600) * slow);
     }
     startGrapple(master, slave) {
         this.grapple.active = true; this.grapple.master = master; this.grapple.slave = slave;
         this.ui.els.grappleInd.style.display = 'block'; SoundFX.playHit(false);
 
-        // 追加: 組み止められた側はチャージリセット
-        slave.charge = 0;
+        // 組み止められた側はチャージが半分に減る（0にすると強すぎるため）
+        slave.charge *= cfg('ACTION.GRAPPLE_CHARGE_KEEP_RATE', 0.5);
         slave.isCharging = false;
         SoundFX.updateCharge(slave.id, false, 0);
 
@@ -1649,22 +1780,8 @@ class GameManager {
         }
 
         // --- 土俵際判定 ---
-        const leftLimit = cfg('GAME_RULES.RING_EDGE_LEFT', 115);
-        const rightLimit = cfg('GAME_RULES.RING_EDGE_RIGHT', 1085);
-
-        const isOut = (p) => {
-            // オブジェクトとして受け取るように変更
-            const scaleObj = p.getPhysiqueScale ? p.getPhysiqueScale() : {x: 1.0, y: 1.0};
-            const centerX = p.x + 65;
-
-            // 足元の広さ（当たり判定）は「横幅（体重: scaleObj.x）」を使う
-            const footSpread = 40 * scaleObj.x;
-
-            return (centerX - footSpread < leftLimit || centerX + footSpread > rightLimit);
-        };
-
-        const p1Out = isOut(this.p1);
-        const p2Out = isOut(this.p2);
+        const p1Out = this.isOutOfRing(this.p1);
+        const p2Out = this.isOutOfRing(this.p2);
 
         // 両者リングアウト（同体）
         if (p1Out && p2Out) {
@@ -1683,9 +1800,50 @@ class GameManager {
         }
     }
 
+    /** 力士の足が土俵の外に出ているか */
+    isOutOfRing(p) {
+        const leftLimit = cfg('GAME_RULES.RING_EDGE_LEFT', 115);
+        const rightLimit = cfg('GAME_RULES.RING_EDGE_RIGHT', 1085);
+        const scaleObj = p.getPhysiqueScale ? p.getPhysiqueScale() : {x: 1.0, y: 1.0};
+        const centerX = p.x + 65;
+        // 足元の広さ（当たり判定）は「横幅（体重: scaleObj.x）」を使う
+        const footSpread = 40 * scaleObj.x;
+        return (centerX - footSpread < leftLimit || centerX + footSpread > rightLimit);
+    }
+
+    /**
+     * 必殺技（ぶちかまし・掴み投げ）の決まり方を見せる。
+     * その技でとどめ（スタミナ切れ・土俵の外）になる時は、動きとボイスをさらにゆっくりにする。
+     * 見た目と音だけで、位置・判定・勝敗はすでに決まっている。
+     */
+    presentSpecialMove(atk, def, kind, defFromX, poseClass, finishClass) {
+        // 巻き戻しの計算し直し中は見せない（NetSim が後でまとめて1回だけ見せる）
+        if (typeof NetSim !== 'undefined' && NetSim.defer(this, 'presentSpecialMove', arguments)) return;
+        const finisher = def.stamina <= 0 || this.isOutOfRing(def);
+        const slow = finisher ? cfg('UI.FINISH_SLOW_RATE', 2.5) : 1;
+
+        if (finisher) {
+            SoundFX.playVoiceDramatic('dosukoi', cfg('UI.FINISH_VOICE_RATE', 0.7));
+            // 曲と行司の声も同じ速さに（音の高さは変えない）。「勝負あり」で元に戻す
+            SoundFX.startFinisherAudio(cfg('UI.FINISH_VOICE_RATE', 0.7));
+        }
+        else SoundFX.playShout('dosukoi');
+
+        const ms = (kind === 'throw')
+            ? this.ui.animateThrowFlight(def, defFromX, slow, finisher)
+            : this.ui.animateThrustKnockback(def, defFromX, slow, finisher);
+        this.showSpecialPose(atk, poseClass, finishClass, slow);
+
+        // とどめの時は、カメラを二人に寄せ、ゆっくりの動きを見終わるまで「勝負あり」を待たせる
+        if (finisher) this.ui.zoomOnFinisher(atk, def, kind, ms || 0);
+        this.finisherHoldMs = finisher ? (ms || 0) : 0;
+    }
+
     resolveDraw() {
         if(this.state.processingEnd) return;
+        if (typeof NetSim !== 'undefined' && !NetSim.allowDecision()) return;
         this.state.processingEnd = true;
+        this.finisherHoldMs = 0;   // 同体では必殺技のとどめ待ちを使わない
 
         // 追加: 試合が早すぎた場合の非表示タイマーをキャンセル
         if (this.callHideTimer) clearTimeout(this.callHideTimer);
@@ -1853,6 +2011,8 @@ class GameManager {
 
     resolveMatch(winner, loser, reason) {
         if(this.state.processingEnd) return;
+        // オンライン対戦では、両者の入力が確定した刻みでだけ勝負ありにする（予想の入力で決着させない）
+        if (typeof NetSim !== 'undefined' && !NetSim.allowDecision()) return;
         this.state.processingEnd = true;
         this.p1.spiritActive = false;
         this.p2.spiritActive = false;
@@ -1903,11 +2063,18 @@ class GameManager {
         this.ui.triggerSlowMotion(loser, winner);
         this.transitionAction = () => { this.endRound(wName, loser, kimarite); };
         this.transitionTimer = 90; // 1.5秒 (60fps × 1.5)
+        // 必殺技がとどめの時は、ゆっくりの動きを見終えてから「勝負あり」にする。
+        // 画面の書き換え回数に左右されないよう、実際の時刻で待つ（loop で確認）
+        this.finisherHoldUntil = this.finisherHoldMs ? performance.now() + this.finisherHoldMs + 400 : 0;
+        this.finisherHoldMs = 0;
 
     }
 
     async endRound(wName, loser, kimarite){
-        SoundFX.playVoice('syoubuari');
+        // 必殺技のとどめで寄せたカメラを、勝負ありで元に戻す
+        this.ui.resetCameraZoom();
+        SoundFX.playVoice('syoubuari');     // とどめの後なら、この「勝負あり」もゆっくり
+        SoundFX.endFinisherAudio();         // 曲と声の速さを元に戻す（鳴り始めた「勝負あり」はそのまま）
         SoundFX.updateCharge('p1',0); SoundFX.updateCharge('p2',0);
         const wId = loser.id==='p1' ? 'p2' : 'p1';
         this.state.wins[wId]++;
@@ -1963,8 +2130,19 @@ class GameManager {
             let winImg = (winnerObj && winnerObj.baseStats && winnerObj.baseStats.img) ? this.ui.getImagePath(winnerObj.baseStats.img) : "";
             let html = ``; if(winImg) { html += `<div class="bg-anim" style="position:absolute; top:50%; left:50%; width:1500px; height:1500px; border-radius:50%; background:url('${winImg}') center/cover; pointer-events:none;"></div>`; }
 
-            html += `<div class="winner-anim" style="position:relative; z-index:10; font-size:4rem; color:gold; font-weight:900; text-shadow:4px 4px 0 #000; font-family: 'Shippori Mincho', serif;">${winner} 優勝！</div><div id="final-btn-container"><button class="btn" onclick="game.rematch()">同じ条件で再戦</button><button id="auto-top-btn" class="btn">${btnLabel} (5)</button></div>`;
+            // 遠征（オンライン対戦）では、どちらかが押したボタンを両者で同時に行う（勝手に戻る秒読みはしない）
+            const onlineFinal = (typeof Online !== 'undefined' && Online.active);
+            if (onlineFinal) Online.finalDone = false;
+            const rematchCall = onlineFinal ? "Online.finalAction('rematch')" : "game.rematch()";
+            const backLabel = onlineFinal ? btnLabel : `${btnLabel} (5)`;
+            // ランダムマッチ・公式戦は、終わったら遠征の画面へ戻るだけ（公式戦はレートの変化も出す）
+            const randomFinal = onlineFinal && Online.mode !== 'friend';
+            const btnsHtml = randomFinal
+                ? `<div id="net-rate-result" class="net-rate-result"></div><div id="final-btn-container"><button id="auto-top-btn" class="btn" onclick="Online.finishAndReturn()">遠征へ戻る</button></div>`
+                : `<div id="final-btn-container"><button class="btn" onclick="${rematchCall}">同じ条件で再戦</button><button id="auto-top-btn" class="btn">${backLabel}</button></div>`;
+            html += `<div class="winner-anim" style="position:relative; z-index:10; font-size:4rem; color:gold; font-weight:900; text-shadow:4px 4px 0 #000; font-family: 'Shippori Mincho', serif;">${winner} 優勝！</div>${btnsHtml}`;
             document.getElementById('match-info').innerHTML = html;
+            if (randomFinal && winnerObj) Online.onMatchFinished(winnerObj.id);
 
             setTimeout(() => {
                     if (this.state.aborted) return;
@@ -1977,6 +2155,8 @@ class GameManager {
                                     clearInterval(this.finalAdvanceTimer);
                                     this.goToCharSelect('init', 'none');
                                 };
+                                if (randomFinal) return;   // 「遠征へ戻る」は押した時だけ
+                                if (onlineFinal) { autoBtn.onclick = () => Online.finalAction('select'); return; }
                                 autoBtn.onclick = executeReturn;
                                 this.finalAdvanceTimer = setInterval(()=>{
                                         if (!this.state.paused) {
@@ -2082,6 +2262,15 @@ class GameManager {
                 const winnerObj = wins1 > wins2 ? this.p1 : this.p2;
                 return { isTournamentOver: true, winnerName: winnerObj.name, winnerObj };
             }
+        }
+        // 遠征のランダムマッチ・公式戦は「先に二勝」。同体で決まらない時は、どちらかが二勝するまで続ける
+        if (this.state.firstTo) {
+            const need = Math.floor(max / 2) + 1;
+            if (wins1 >= need || wins2 >= need) {
+                const winnerObj = wins1 > wins2 ? this.p1 : this.p2;
+                return { isTournamentOver: true, winnerName: winnerObj.name, winnerObj };
+            }
+            return { isTournamentOver: false };
         }
         if (this.state.deuce) {
             const diff = Math.abs(wins1 - wins2);

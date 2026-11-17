@@ -35,6 +35,9 @@ const IdleReturn = {
     check() {
         // タイトルにいる間は計測しない（タイトルを離れた時点から数え始める）
         if (this.isOnTitle()) { this.lastActive = Date.now(); return; }
+        // 入門（力士を作る画面）では戻さない。顔を考えている間に作りかけが消えないように
+        const create = document.getElementById('create-screen');
+        if (create && create.classList.contains('active')) { this.lastActive = Date.now(); return; }
 
         if (Date.now() - this.lastActive < this.timeoutMs) return;
 

@@ -180,6 +180,8 @@ async function loadExternalData() {
                 // 0は有効な値なので || で弾かないこと
                 const orderOf = (d) => Number.isFinite(d.id) ? d.id : 999;
                 RIKISHI_DATA.sort((a, b) => orderOf(a) - orderOf(b));
+                // 新力士入門で作った力士（この端末に保存）を後ろに加える
+                if (typeof CustomRikishi !== 'undefined') CustomRikishi.injectAll();
                 console.log("キャラクターデータを読み込みました:", RIKISHI_DATA.length + "件");
 
                 if (outOfRange.length) {

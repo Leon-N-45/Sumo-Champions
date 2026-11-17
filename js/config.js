@@ -37,6 +37,11 @@ const DATA_URLS = {
 // ============================================================
 const IDLE_RETURN_SECONDS = 180;
 
+// 遠征（オンライン対戦）の仲介サーバー（Cloudflare Workers）。中身は server/signaling
+const ONLINE_SIGNAL_URL = 'https://sumocham-signal.leon-noguchi.workers.dev';
+// 端末同士の直接通信で、自分の住所（通信先）を調べるための公開サーバー（無料）
+const ONLINE_STUN_SERVERS = ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'];
+
 // ============================================================
 // ■ 個人戦の取組数
 // ------------------------------------------------------------
@@ -136,6 +141,10 @@ const CONFIG = {
         BUCHI_DOWNTIME_REF_SPEED: 10,   // 基準となるハヤサ
         BUCHI_DOWNTIME_MAX: 120,        // ダウンタイム上限（低ハヤサ時の暴走防止）
 
+        // 溜めながら横に動いている間のゲージの増え方（1で減速なし、0.5で半分）
+        CHARGE_MOVE_GAIN_RATE: 0.5,
+        GRAPPLE_CHARGE_KEEP_RATE: 0.5,  // 組み止められた時に残るチャージの割合（0.5で半分）
+
         SWAP_DIST_NORMAL: 120,
         SWAP_DIST_SUPER: 250   // ACTION_SWAP_DIST_SUPER
     },
@@ -205,7 +214,17 @@ const CONFIG = {
     UI: {
         DMG_DURATION: 60,
         GYOJI_INTERVAL_MAX: 2500,
-        GYOJI_INTERVAL_MIN: 800
+        GYOJI_INTERVAL_MIN: 800,
+        // 必殺技の見た目の動き（ミリ秒）。見た目だけを動かし、勝敗や操作のタイミングは変えない
+        THROW_FLIGHT_MS: 600,   // 掴み投げで相手が一回転しながら背後へ飛ばされ、着地するまでの時間（元 約765）
+        THROW_STUN_MS: 650,     // 着地した後にふらつく時間（とどめの時はふらつかない）
+        THRUST_SPIN_MS: 300,    // ぶちかましで相手が左右に回りながら飛ばされる時間
+        THRUST_SPIN_TURNS: 2,   // その間に回る回数
+        THRUST_STUN_MS: 530,    // 止まった後にふらつく時間（とどめの時はふらつかない）
+        FINISH_SLOW_RATE: 2.5,  // 必殺技がとどめになった時、動きを何倍ゆっくりにするか
+        FINISH_VOICE_RATE: 0.7, // その時の「どすこい」の再生速度（1で通常、小さいほどゆっくり。声の高さは変わらない）
+        FINISH_ZOOM_MAX: 2.2,   // その時にカメラを寄せる最大倍率
+        SPECIAL_POSE_MS: 600    // ぶちかまし・掴み投げの技を出した側の構えを見せる時間
     }
 };
 
@@ -313,7 +332,9 @@ const CUSTOM_BACKGROUNDS = {
  */
 function charBgFiles(charData) {
     const files = [];
-    const imgName = (charData.img || '').split('/').pop();   // パス付きで渡る場合もある
+    // 自作力士の顔は画像データそのもの（data:〜）なので、ファイル名から専用背景は探さない
+    const isDataImg = (charData.img || '').startsWith('data:');
+    const imgName = isDataImg ? '' : (charData.img || '').split('/').pop();   // パス付きで渡る場合もある
     const explicit = (charData.bgImage || '').trim() || CUSTOM_BACKGROUNDS[imgName];
     if (explicit) files.push(explicit);
     else if (imgName && CUSTOM_BG_PREFIX) files.push(CUSTOM_BG_PREFIX + imgName);
@@ -325,6 +346,8 @@ function charBgFiles(charData) {
 
 /** background-image にそのまま入れられる形で返す */
 function charBgCss(charData) {
+    // 入門で背景を単色にした新弟子は、その色だけにする（模様の画像は使わない）
+    if (charData && charData.bgColor) return `linear-gradient(${charData.bgColor}, ${charData.bgColor})`;
     return charBgFiles(charData).map(f => `url('assets/img/${f}')`).join(', ');
 }
 
@@ -345,10 +368,110 @@ function charTypeAssets(charData) {
     return typed;
 }
 
+// ============================================================
+// ■ 強さ・タイプ・コストの計算（スプレッドシートの式と同じ）
+// ------------------------------------------------------------
+// 新力士入門（自作力士）で使う。スプシの既存力士もこの式で強さが決まっている。
+//   強さ = (チカラ×5.5 + ギジュツ×3.5 + ハヤサ×2 + タイリョク×2 + キモチ + ギャクテン) ÷ 150 × 100
+//   タイプ = チカラ・ギジュツ・ハヤサのうち、他の2つより1以上高いものがあればそのタイプ、無ければバランス
+// ============================================================
+const STRENGTH_WEIGHTS = { power: 5.5, tech: 3.5, speed: 2, stamina: 2, spirit: 1, reversal: 1 };
+const STAT_KEYS = ['power', 'tech', 'speed', 'stamina', 'spirit', 'reversal'];
+
+function calcStrength(s) {
+    const sum = STAT_KEYS.reduce((t, k) => t + (Number(s[k]) || 0) * STRENGTH_WEIGHTS[k], 0);
+    return Math.round(sum / 150 * 100);
+}
+
+function calcPlayType(s) {
+    const p = Number(s.power) || 0, t = Number(s.tech) || 0, sp = Number(s.speed) || 0;
+    if (p >= t + 1 && p >= sp + 1) return 'パワー';
+    if (t >= p + 1 && t >= sp + 1) return 'テクニック';
+    if (sp >= p + 1 && sp >= t + 1) return 'スピード';
+    return 'バランス';
+}
+
+/**
+ * 能力調整（個人戦の試験的なルール）：力士の特徴（どの能力が高い・低いか）を残したまま、
+ * 強さを目標（50）にできるだけ近づける。目標を超えることは絶対にない。
+ *   1. 6つの能力に同じ倍率をかける（強い力士は全体に下がり、弱い力士は全体に上がる）
+ *      目標を超えない一番大きい倍率を探す
+ *   2. 端数の切り捨てで余った分は、倍率どおりより低くなっている能力から1つずつ足して目標に寄せる
+ * 返り値は能力6つ（power〜reversal）の入ったオブジェクト。
+ */
+function adjustToStrength(src, target = 50) {
+    const base = {};
+    STAT_KEYS.forEach(k => { base[k] = Math.max(1, Number(src[k]) || 1); });
+    const make = (m) => {
+        const o = {};
+        STAT_KEYS.forEach(k => { o[k] = Math.max(1, Math.min(10, Math.round(base[k] * m))); });
+        return o;
+    };
+    let best = make(0), bestStr = calcStrength(best), bestM = 0;
+    for (let m = 0.05; m <= 10; m += 0.005) {
+        const o = make(m), s = calcStrength(o);
+        if (s <= target && s >= bestStr) { best = o; bestStr = s; bestM = m; }
+    }
+    // 余りを埋める：倍率どおりの値より低くなっている能力（＝切り捨てられた能力）から順に1ずつ
+    for (let guard = 0; guard < 60; guard++) {
+        const cands = STAT_KEYS
+            .filter(k => best[k] < 10 && calcStrength({ ...best, [k]: best[k] + 1 }) <= target)
+            .sort((a, b) => (best[a] - base[a] * bestM) - (best[b] - base[b] * bestM));
+        if (!cands.length) break;
+        best[cands[0]]++;
+    }
+    return best;
+}
+
+// 団体戦のコスト（既存力士の強さとコストの対応に合わせた段階）
+function costFromStrength(str) {
+    if (str >= 85) return 6;
+    if (str >= 75) return 5;
+    if (str >= 65) return 4;
+    if (str >= 60) return 3;
+    if (str >= 50) return 2;
+    if (str >= 40) return 1;
+    return 0;
+}
+
+/**
+ * コストの八角形バッジのHTML（団体戦・個人戦の力士アイコン、入門の新弟子一覧で共通）。
+ *   isLarge : 団体戦の編成枠に出す大きいバッジなら true
+ */
+function costBadgeHtml(cost, isLarge = false) {
+    let bg = '';
+    if (cost === '?') bg = '#3f3f46';   // ランダム枠（中身が分からない）
+    else if (cost <= 1) bg = '#a1a1aa';
+    else if (cost === 2) bg = '#4ade80';
+    else if (cost === 3) bg = '#ec4899';
+    else if (cost === 4) bg = '#3b82f6';
+    else if (cost === 5) bg = '#eab308';
+    else bg = '#745399';
+
+    const size = isLarge ? 36 : 28;
+    const fontSize = isLarge ? 18 : 14;
+    // 編成枠の大きいバッジと、力士一覧の小さいバッジで位置を分ける
+    const bottomPos = isLarge ? "13px" : "0px";
+    const rightPos  = isLarge ? "13px" : "0px";
+
+    return `
+    <div class="cost-badge" style="position:absolute; bottom:${bottomPos}; right:${rightPos}; width:${size}px; height:${size}px; z-index:5; display:flex; align-items:center; justify-content:center; pointer-events:none;">
+        <svg width="${size}" height="${size}" viewBox="0 0 100 100" style="position:absolute; top:0; left:0; z-index:-1;">
+            <polygon points="30,4 70,4 96,30 96,70 70,96 30,96 4,70 4,30" fill="${bg}" stroke="#000000" stroke-width="8" stroke-linejoin="round" />
+        </svg>
+        <span style="color:#ffffff; font-size:${fontSize}px; font-weight:900; font-family:'M PLUS Rounded 1c', sans-serif; -webkit-text-stroke:1px #000;">${cost}</span>
+    </div>
+    `;
+}
+
 // 力士選択グリッドの大きさ（横の列数 × 縦の段数）。
+// 上の5段（OFFICIAL_ROWS）はスプシの力士、一番下の1段は新力士入門で作った「新弟子」の段。
 // 変えるときは css/ui.css の #icon-grid の grid-template-columns も揃えること。
-const CHAR_GRID = { COLS: 5, ROWS: 5 };
+const CHAR_GRID = { COLS: 5, ROWS: 6, OFFICIAL_ROWS: 5 };
 CHAR_GRID.SIZE = CHAR_GRID.COLS * CHAR_GRID.ROWS;
+CHAR_GRID.OFFICIAL_SIZE = CHAR_GRID.COLS * CHAR_GRID.OFFICIAL_ROWS;   // スプシの力士のマス（ランダム含む）
+CHAR_GRID.CUSTOM_START = CHAR_GRID.OFFICIAL_SIZE;                     // 新弟子の段の最初のマス
+CHAR_GRID.CUSTOM_COUNT = CHAR_GRID.SIZE - CHAR_GRID.OFFICIAL_SIZE;    // 新弟子の段のマスの数
 
 // 力士選択画面の倍率。横幅で決まる時は「外枠の内側〜カード」と「カード〜アイコン欄」の
 // 余白が同じになるように縮める（カードは基準枠より左右へ10pxはみ出している）。
@@ -362,19 +485,20 @@ function selectScreenScale() {
     return Math.min(byWidth, (window.innerHeight - 60) / 900);
 }
 
-// 一番右下のマスは「ランダム」。選ぶと、選べる力士の中から1人を抽選する。
+// スプシの力士の段の一番右下のマスは「ランダム」。選ぶと、スプシの力士から1人を抽選する。
 const RANDOM_CHAR_ID = -1;
 const RANDOM_CHAR_IMG = 'assets/img/random.png';   // 選曲画面の「ランダム」と同じ画像
 const RANDOM_SLOT = { id: RANDOM_CHAR_ID, random: true };
-const RANDOM_SLOT_INDEX = CHAR_GRID.SIZE - 1;
+const RANDOM_SLOT_INDEX = CHAR_GRID.OFFICIAL_SIZE - 1;
 
 /**
  * ランダムのマスが選ばれた時に、実際の力士を抽選して ID を返す。
  * accept で候補を絞れる（団体戦の重複・コスト上限など）。候補がいなければ null。
+ * 新弟子は抽選に入れない（スプシの力士だけから選ぶ）。
  */
 function pickRandomCharId(accept = () => true) {
     const pool = buildCharGridSlots({ silent: true })
-        .filter(d => d && !d.random && d.category !== '空きスロット' && accept(d));
+        .filter(d => d && !d.random && !d.custom && d.category !== '空きスロット' && accept(d));
     return pool.length ? pool[Math.floor(Math.random() * pool.length)].id : null;
 }
 
@@ -382,7 +506,8 @@ function pickRandomCharId(accept = () => true) {
 // 並び順は Characters シートの ID で決まる（ID 0 が左上、以降が右へ）。
 // 空き番号をつくれば、その位置をマスごと空けられる。
 // ID が空欄の行は準備中の力士として扱い、マスには出さない。
-// 一番右下はランダム用に空けておく（力士に使えるIDは 0〜SIZE-2）。
+// スプシの力士の段の右下はランダム用に空けておく（力士に使えるIDは 0〜OFFICIAL_SIZE-2）。
+// 一番下の段は新弟子（作った順に左から）。
 function buildCharGridSlots({ silent = false } = {}) {
     const gridSlots = new Array(CHAR_GRID.SIZE).fill(null);
     gridSlots[RANDOM_SLOT_INDEX] = RANDOM_SLOT;
@@ -391,7 +516,7 @@ function buildCharGridSlots({ silent = false } = {}) {
     const noId = [];        // IDが範囲外の力士
 
     RIKISHI_DATA.forEach(d => {
-            if (d.draft) return;
+            if (d.draft || d.custom) return;
             const valid = Number.isFinite(d.id) && d.id >= 0 && d.id < RANDOM_SLOT_INDEX;
             if (valid && gridSlots[d.id] === null) {
                 gridSlots[d.id] = d;
@@ -414,10 +539,19 @@ function buildCharGridSlots({ silent = false } = {}) {
     }
 
     let idx = 0;
-    for (let i = 0; i < CHAR_GRID.SIZE; i++) {
+    for (let i = 0; i < CHAR_GRID.OFFICIAL_SIZE; i++) {
         if (gridSlots[i] === null && idx < unplaced.length) gridSlots[i] = unplaced[idx++];
     }
+
+    // 新弟子の段
+    RIKISHI_DATA.filter(d => d.custom).slice(0, CHAR_GRID.CUSTOM_COUNT)
+        .forEach((d, i) => { gridSlots[CHAR_GRID.CUSTOM_START + i] = d; });
     return gridSlots;
+}
+
+/** そのマスが新弟子の段（空きマス含む）かどうか */
+function isCustomRowIndex(i) {
+    return i >= CHAR_GRID.CUSTOM_START && i < CHAR_GRID.SIZE;
 }
 
 if (typeof module !== 'undefined') module.exports = CONFIG;

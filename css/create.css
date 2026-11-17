@@ -1,0 +1,261 @@
+/* =========================================================
+   入門（キャラクリエイト）  js/custom_rikishi.js
+   1260×900 の基準枠の中に配置し、index.html の initFastScale で拡縮する
+   ========================================================= */
+#create-screen { padding-top: 0; }
+#create-scaling-wrapper { z-index: 10; }
+
+.create-title {
+    position: absolute; top: 26px; width: 100%; text-align: center;
+    font-family: 'tamanegi', sans-serif; font-size: 4.2rem; color: #111;
+    text-shadow: 3px 3px 0 #d8cdb0;
+}
+
+.create-layout {
+    position: absolute; top: 132px; left: 30px; right: 30px; bottom: 30px;
+    display: grid; grid-template-columns: 312px 380px 1fr; gap: 18px;
+}
+.create-panel {
+    background: #fdfbf5; border: 4px solid #111; border-radius: 6px;
+    box-shadow: 4px 4px 0 rgba(0,0,0,0.18);
+    padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
+    min-height: 0;
+}
+.create-heading {
+    font-family: 'Yuji Syuku', serif; font-size: 1.3rem; font-weight: bold;
+    border-bottom: 2px solid #111; padding-bottom: 4px;
+    display: flex; align-items: center; justify-content: space-between;
+}
+.create-count { font-size: 1rem; color: #555; font-family: 'M PLUS Rounded 1c', sans-serif; }
+
+/* --- 左：新弟子一覧（小さい箱）と力士カード（箱の外） --- */
+/*   カードの下端は他の箱の下端に揃え、残りの高さを一覧の箱に使う */
+.create-left { display: flex; flex-direction: column; gap: 20px; min-height: 0; }
+.create-list-panel { padding: 10px 14px; gap: 10px; flex: 1; }
+.create-list {
+    flex: 1; display: grid; grid-template-columns: repeat(3, 72px);
+    gap: 12px; align-content: center; justify-content: center;
+}
+.create-list-item {
+    position: relative; width: 72px; height: 72px; border: 4px solid #111; border-radius: 0;
+    background-color: #fdfbf5; background-repeat: no-repeat;
+    cursor: pointer; padding: 0; box-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+}
+/* 力士選択画面のアイコンと同じ：顔は枠に収め、背景はタイプ別の模様をいっぱいに */
+.create-list-char { background-size: contain, cover; background-position: center; }
+.create-list-char .cost-badge { transform: scale(0.85); transform-origin: bottom right; }
+.create-list-item.active { border-color: #745399; box-shadow: 0 0 0 3px #c9b3e0; }
+.create-list-item:hover { transform: scale(1.04); }
+.create-list-empty { background-color: #efe7d2; border-style: dashed; border-color: #b9ab88; }
+.create-list-empty.active { border-style: solid; }
+.create-list-plus { font-size: 1.8rem; font-weight: 900; color: #a3946f; }
+.create-list-empty.active .create-list-plus { color: #745399; }
+
+/* 力士カード（力士選択画面と同じカードを 0.75 倍で置く） */
+.create-card-wrap { position: relative; width: 300px; height: 450px; align-self: center; flex: none; cursor: zoom-in; }
+/* カード右上の白い所に置く、背景の単色パレット（白・グレー・黒） */
+.create-bg-palette {
+    position: absolute; top: 5px; right: 14px; z-index: 200;
+    display: flex; gap: 6px;
+}
+.create-bg-swatch {
+    width: 18px; height: 18px; padding: 0; border-radius: 50%;
+    border: 2px solid #111; cursor: pointer;
+}
+.create-bg-swatch:hover { transform: scale(1.15); }
+.create-bg-swatch.active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #745399; }
+/* 大きく出したカードでは、操作の切り替え（Player/CPU）は使わないので隠す */
+.create-detail .cpu-switch-container { display: none !important; }
+#preview-create.create-card {
+    position: absolute; top: 0; left: 0;
+    transform: scale(0.75) !important; transform-origin: top left;
+    filter: drop-shadow(0 8px 14px rgba(0,0,0,0.45));
+    pointer-events: none;
+}
+#preview-create .cpu-switch-container { display: none !important; }
+/* 数値を変えるたびに登場の動きが入らないよう、2回目以降は止める */
+#preview-create.no-dock .anim-wrapper { animation: none !important; }
+#preview-create.no-dock .rikishi-body { animation-delay: 0s !important; }
+
+/* --- 中央：お絵かき --- */
+.create-center { justify-content: space-between; }
+.create-guide-label { font-size: 0.9rem; font-family: 'M PLUS Rounded 1c', sans-serif; font-weight: bold; cursor: pointer; }
+.create-guide-label input { accent-color: #745399; }
+.create-canvas-wrap {
+    position: relative; width: 320px; height: 320px; align-self: center; flex: none;
+    border: 4px solid #111; border-radius: 50%; overflow: hidden;   /* 顔の形の真円 */
+    /* 透明な所が分かるよう、うすい市松模様にする */
+    background-color: #fff;
+    background-image: linear-gradient(45deg, #f1ece0 25%, transparent 25%, transparent 75%, #f1ece0 75%),
+                      linear-gradient(45deg, #f1ece0 25%, transparent 25%, transparent 75%, #f1ece0 75%);
+    background-size: 24px 24px; background-position: 0 0, 12px 12px;
+}
+.create-canvas-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+#create-guide { pointer-events: none; z-index: 2; }   /* 塗った上からでも見えるよう絵より手前 */
+#create-canvas { cursor: crosshair; touch-action: none; }
+
+.create-tool-row { display: flex; justify-content: space-between; align-items: center; }
+.create-tools { display: flex; gap: 6px; align-items: center; }
+.create-icon-btn {
+    width: 40px; height: 40px; padding: 6px; border: 2px solid #111; border-radius: 6px;
+    background: #fff; cursor: pointer;
+}
+.create-icon-btn svg { width: 100%; height: 100%; fill: none; stroke: #111; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.create-icon-btn svg .fillme { fill: #111; }
+.create-icon-btn.active { background: #111; }
+.create-icon-btn.active svg { stroke: #fff; }
+.create-icon-btn.active svg .fillme { fill: #fff; }
+.create-tool-btn {
+    font-family: 'M PLUS Rounded 1c', sans-serif; font-weight: bold; font-size: 0.9rem;
+    padding: 7px 10px; border: 2px solid #111; border-radius: 4px; background: #fff; cursor: pointer;
+}
+.create-tool-btn:active { background: #eee; }
+
+.create-size-row { display: flex; align-items: center; gap: 10px; }
+.create-size-label { font-weight: bold; font-size: 0.95rem; flex: none; }
+/* 太さの見本の丸：大きさが変わっても周りを押し出さないよう、決まった大きさの箱の中で変える */
+.create-size-dot-box { flex: none; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }
+.create-zoom-val { font-size: 0.8rem; font-weight: 900; }
+.create-size-dot {
+    display: block; border-radius: 50%; border: 1px solid #999;
+    box-sizing: border-box; min-width: 4px; min-height: 4px;
+}
+.create-size-row .create-range { flex: 1; }
+
+.create-colors { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; }
+.create-color { aspect-ratio: 1; border: 2px solid #111; border-radius: 50%; cursor: pointer; padding: 0; }
+.create-color.active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #745399; }
+
+/* スライダー共通 */
+.create-range { accent-color: #745399; height: 20px; cursor: pointer; }
+
+/* --- 右：名前と能力（上下に均等に並べる） --- */
+.create-right-col { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.create-right { flex: 1; justify-content: space-between; padding: 18px 20px; }
+.create-field { display: flex; align-items: center; gap: 10px; }
+.create-label { font-family: 'Yuji Syuku', serif; font-weight: bold; font-size: 1.15rem; width: 60px; flex: none; }
+.create-name {
+    flex: 1; font-size: 1.3rem; font-weight: bold; padding: 6px 10px;
+    border: 2px solid #111; border-radius: 4px; font-family: 'M PLUS Rounded 1c', sans-serif;
+}
+
+.create-strength { border: 3px solid #111; border-radius: 6px; padding: 8px 12px; background: #fff; }
+.create-strength-head { display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 1.1rem; }
+#create-stats-random { font-size: 0.85rem; padding: 4px 12px; }
+.create-strength-head b { font-size: 1.9rem; color: #745399; }
+.create-strength-rest { font-size: 1rem; color: #555; }
+.create-strength-bar { height: 14px; background: #eee; border: 2px solid #111; border-radius: 8px; overflow: hidden; margin: 4px 0; }
+.create-strength-fill { height: 100%; background: linear-gradient(90deg, #a78bfa, #745399); transition: width 0.15s; }
+.create-strength-foot { display: flex; justify-content: space-between; font-weight: bold; font-size: 1rem; }
+.create-type { color: #b45309; }
+.create-strength.over { animation: createOver 0.4s; }
+@keyframes createOver { 0%, 100% { transform: none; } 25% { transform: translateX(-6px); border-color: #dc2626; } 75% { transform: translateX(6px); border-color: #dc2626; } }
+
+.create-stats { display: flex; flex-direction: column; gap: 9px; }
+.create-stat-row { display: grid; grid-template-columns: 96px 32px 1fr 30px 32px; align-items: center; gap: 8px; }
+.create-stat-name { font-weight: bold; font-size: 1.05rem; }
+.create-step {
+    width: 32px; height: 32px; border: 2px solid #111; border-radius: 4px; background: #fff;
+    font-weight: 900; font-size: 1.1rem; cursor: pointer; padding: 0; line-height: 1;
+}
+.create-step:disabled { opacity: 0.3; cursor: default; }
+.create-stat-bar { height: 12px; background: #eee; border: 2px solid #111; border-radius: 6px; overflow: hidden; }
+.create-stat-fill { height: 100%; background: #f59e0b; transition: width 0.12s; }
+.create-stat-val { font-weight: 900; font-size: 1.25rem; text-align: center; }
+.create-stat-val.stat-low { color: #dc2626; }    /* 3以下 */
+.create-stat-val.stat-high { color: #2563eb; }   /* 8以上 */
+
+.create-body-rows { display: flex; flex-direction: column; gap: 12px; }
+.create-body-rows .create-range { flex: 1; }
+.create-range-val { width: 30px; text-align: center; font-weight: 900; font-size: 1.25rem; }
+
+.create-choices { display: flex; gap: 6px; flex: 1; }
+.create-choice {
+    flex: 1; padding: 6px 0; border: 2px solid #111; border-radius: 4px; background: #fff;
+    font-weight: bold; font-size: 1rem; cursor: pointer; font-family: 'M PLUS Rounded 1c', sans-serif;
+}
+.create-choice.active { background: #745399; color: #fff; }
+
+.create-actions { display: flex; gap: 14px; justify-content: flex-end; flex: none; }
+/* 削除と保存は同じ大きさ・同じ文字の大きさ */
+.create-actions .btn { width: 160px; font-size: 1.4rem; padding: 10px 0; text-align: center; }
+.create-delete-btn { color: #b91c1c; }
+
+/* --- 顔の作り方の切り替え（パーツで作る／自分で描く） --- */
+.create-mode-head { padding-bottom: 6px; }
+.create-mode-switch { display: flex; border: 3px solid #111; border-radius: 8px; overflow: hidden; }
+.create-mode-btn {
+    font-family: 'Yuji Syuku', serif; font-weight: bold; font-size: 1.05rem;
+    padding: 4px 14px; border: none; background: #fff; cursor: pointer;
+}
+.create-mode-btn + .create-mode-btn { border-left: 3px solid #111; }
+.create-mode-btn.active { background: #745399; color: #fff; }
+.create-center.parts-mode .draw-only { display: none !important; }
+.create-center.draw-mode .parts-only { display: none !important; }
+/* パーツで作る時は選ぶ所が多いので、顔の見本を少し小さくする（中の大きさ 320×320 は同じ） */
+.create-center.parts-mode .create-canvas-wrap { width: 236px; height: 236px; }
+.create-center.parts-mode #create-canvas { cursor: default; }
+.create-center.parts-mode #create-guide { display: none !important; }   /* 下書き線は描く時だけ */
+.create-center { gap: 8px; }
+
+/* --- パーツを選ぶ所 --- */
+.create-parts-ui { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+.parts-cats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.parts-cat {
+    font-weight: bold; font-size: 0.85rem; padding: 4px 0; border: 2px solid #111; border-radius: 4px;
+    background: #fff; cursor: pointer; font-family: 'M PLUS Rounded 1c', sans-serif;
+}
+.parts-cat.active { background: #111; color: #fff; }
+.parts-types { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.parts-type {
+    display: flex; flex-direction: column; align-items: center; padding: 3px 2px 2px;
+    border: 2px solid #b9ab88; border-radius: 6px; background: #fff; cursor: pointer;
+}
+.parts-type canvas { width: 54px; height: 54px; }
+.parts-type span { font-size: 0.68rem; font-weight: bold; white-space: nowrap; }
+.parts-type.active { border-color: #745399; box-shadow: 0 0 0 2px #c9b3e0; }
+.parts-colors { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.parts-color { width: 24px; height: 24px; border-radius: 50%; border: 2px solid #111; cursor: pointer; padding: 0; }
+.parts-color.active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #745399; }
+.parts-sliders { display: flex; flex-direction: column; gap: 4px; }
+.parts-slider { display: flex; align-items: center; gap: 10px; font-weight: bold; font-size: 0.9rem; }
+.parts-slider span { width: 50px; flex: none; }
+.parts-slider .create-range { flex: 1; }
+.parts-actions { margin-top: auto; display: flex; gap: 8px; justify-content: center; }
+
+/* --- はい／いいえの確認 --- */
+.create-confirm {
+    position: absolute; inset: 0; z-index: 500; display: none;
+    align-items: center; justify-content: center; background: rgba(0,0,0,0.45);
+}
+.create-confirm.active { display: flex; }
+.create-confirm-box {
+    background: #fdfbf5; border: 4px solid #111; border-radius: 8px; padding: 28px 36px;
+    box-shadow: 6px 6px 0 rgba(0,0,0,0.3); text-align: center; min-width: 360px;
+}
+.create-confirm-msg { font-size: 1.4rem; font-weight: bold; margin-bottom: 22px; white-space: pre-line; line-height: 1.5; }
+.create-confirm-btns { display: flex; gap: 20px; justify-content: center; }
+.create-confirm-btns .btn { font-size: 1.2rem; padding: 8px 26px; }
+
+/* 描いた顔（画像データ data:〜 の顔）は、他の力士より少し大きく見せる。
+   キャンバスの円いっぱいが顔なので、そのままだと小さく見えるため。
+   顔の下端（首の付け根）がずれないよう、大きくした分だけ上へ上げる。 */
+/*   以前は scale で大きくしていたが、中央寄せの translateX(-50%) まで1.2倍されて左に寄ったため、
+     顔の枠そのものを2割大きくする方法に変えた（中央寄せはそのまま効く）。下端は大きくした分だけ上げる */
+.rikishi .head[style*="data:image"] { width: 96px !important; height: 96px !important; translate: 0 -16px; }          /* 戦闘（80px） */
+.preview-char-img .head[style*="data:image"] { width: 120px !important; height: 120px !important; translate: 0 -20px; } /* カード（100px） */
+.team-slot .head[style*="data:image"] {                                                                                   /* 団体戦の枠（100px） */
+    width: 120px !important; height: 120px !important; margin-left: -60px !important; translate: 0 -20px;
+}
+
+/* =========================================================
+   力士選択：一番下の段は新弟子（入門で作った力士）
+   ========================================================= */
+.char-select-icon.custom-row.inactive {
+    background-color: #efe7d2; border-style: dashed; border-color: #b9ab88;
+    display: flex; align-items: center; justify-content: center; opacity: 1;
+}
+.custom-empty-label {
+    font-family: 'Yuji Syuku', serif; font-weight: bold; font-size: 1.05rem; color: #a3946f;
+    pointer-events: none;
+}

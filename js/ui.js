@@ -682,6 +682,22 @@ class UIManager {
             }
         }
 
+        // 何もしていない時は、カード画面と同じように呼吸で上下に揺れる（スピードが高いほど速い）
+        //   動いている・溜めている・技や状態の見た目が付いている時は揺らさない（それらの動きを優先）
+        const moved = Math.abs(p.x - (p._lastDrawX ?? p.x)) > 0.2;
+        p._lastDrawX = p.x;
+        const grappled = this.game && this.game.grapple && this.game.grapple.active;
+        // 溜め終わって光っているだけ（charge-mid / charge-max）なら揺らしてよい
+        const calm = classStr.replace(/ charge-(mid|max)/, '') === 'rikishi' && !p.isCharging;
+        if (calm && !moved && !grappled && !p.animClass && !p.isPushing
+            && !(p.stun > 0) && !(p.cooldown > 0)) {
+            classStr += ' idle-breath';
+            if (p._breathSpeed !== p.baseStats?.speed) {
+                p._breathSpeed = p.baseStats?.speed;
+                p.el.style.setProperty('--breath-dur', `${speedAnimDuration(p.baseStats?.speed)}s`);
+            }
+        }
+
         p.el.className = classStr;
 
         if (p.stun > 0 && !p.isDefeated) {
@@ -700,12 +716,30 @@ class UIManager {
         loser.fallDir = null;
         this.draw(this.game.p1, this.game.p2);
         void loser.el.offsetWidth;
+        const flying = (loser.flightAnim && loser.flightAnim.playState === 'running') ? loser.flightAnim : null;
+        const dur = flying ? flying.effect.getTiming().duration : 0;
+        const elapsed = flying ? (flying.currentTime || 0) : 0;
+        let delay = 50;
+        if (flying && loser.flightKind === 'throw') {
+            // 掴み投げ：空中で回りながら、着地の瞬間に横倒しになるよう倒れる動きを同じ速さで重ねる
+            // （一度足から着地してから倒れると、ぎこちなく見えるため）
+            const body = loser.el.querySelector('.rikishi-body');
+            const landMs = Math.max(200, dur * 0.85 - elapsed);
+            if (body) {
+                body.style.setProperty('transition', `transform ${landMs}ms linear`, 'important');
+                setTimeout(() => body.style.removeProperty('transition'), landMs + 100);
+            }
+            delay = 0;
+        } else if (flying) {
+            // ぶちかまし：飛ばされる勢いが落ちてきた所（全体の8割）から倒れ始め、止まらずにそのまま倒れる
+            delay = Math.max(0, dur * 0.8 - elapsed);
+        }
         this.animTimer = setTimeout(() => {
                 if (loser.x < winner.x) loser.fallDir = 'left';
                 else loser.fallDir = 'right';
                 this.draw(this.game.p1, this.game.p2);
                 this.animTimer = null;
-            }, 50);
+            }, delay);
     }
 
     triggerDoubleSlowMotion(p1, p2) {
@@ -731,6 +765,178 @@ class UIManager {
                 this.draw(this.game.p1, this.game.p2);
                 this.animTimer = null;
             }, 50);
+    }
+
+    // ---------------------------------------------------------------
+    // 必殺技の見た目の動き
+    // 位置そのもの（p.x）は技の瞬間に移動を終えているので、ここでは見た目だけを
+    // 元の場所から新しい場所へゆっくり動かす。勝敗・操作・当たり判定には影響しない。
+    // 力士の外枠(.rikishi)に Web Animations で重ねるため、毎フレームのクラス付け替えにも消されない。
+    // ---------------------------------------------------------------
+
+    /** 掴み投げ：投げられた側が、相手の頭上で上下さかさまになりながら背後へ飛ばされる */
+    //   slow : 何倍ゆっくりにするか（とどめの時など）。戻り値は動きの長さ(ms)
+    //   finisher : とどめの時は着地後にふらつかず、そのまま倒れる（倒れる動きは triggerSlowMotion が重ねる）
+    animateThrowFlight(victim, fromX, slow = 1, finisher = false) {
+        const dx = fromX - victim.x;                 // 元の場所までの見た目のずれ
+        if (!victim.el || Math.abs(dx) < 1) return 0;
+        const s = dx > 0 ? -1 : 1;                  // 飛んでいく向き（右へ飛ぶなら +1）
+        const flightMs = cfg('UI.THROW_FLIGHT_MS', 600) * slow;   // 投げ始めから着地まで
+        // とどめ：着地後の残りは全体の15%（triggerSlowMotion・カメラが LAND=0.85 を前提にしている）
+        // 通常：着地の踏ん張り(120ms) ＋ スタンでふらつく時間
+        const ms = finisher
+            ? flightMs / 0.85
+            : flightMs + (120 + cfg('UI.THROW_STUN_MS', 650)) * slow;
+        const LAND = flightMs / ms;   // 着地するまでの割合
+        const HEIGHT = 190;    // 山なりの高さ(px)
+        const STEPS = 16;
+
+        // 投げ始めから着地まで同じ速さで一回転させながら、山なりに背後へ飛ばす。
+        // 一番高い所（相手の頭上）でちょうど上下さかさま（180度）になり、着地の瞬間に一回転して足から下りる。
+        // 回転と横移動は時間に比例させ、高さだけ放物線にする（全体の easing は linear）。
+        const frames = [];
+        for (let i = 0; i <= STEPS; i++) {
+            const u = i / STEPS;
+            const x = dx * (1 - u);
+            const y = -HEIGHT * 4 * u * (1 - u);
+            frames.push({ transform: `translate(${x}px, ${y}px) rotate(${s * 360 * u}deg)`, offset: LAND * u });
+        }
+        if (finisher) {
+            // 着地で少し沈んでから元に戻る（倒れる動きと重なるので見た目にはほぼ出ない）
+            frames.push({ transform: `translate(0, 0) rotate(${s * 360}deg) scale(1.08, 0.88)`, offset: LAND + (1 - LAND) * 0.47 });
+            frames.push({ transform: `translate(0, 0) rotate(${s * 360}deg)`, offset: 1 });
+        } else {
+            // 着地で沈んで戻り、その場で左右にふらふら揺れて収まる（スタン）
+            const squashEnd = LAND + 120 * slow / ms;
+            frames.push({ transform: `translate(0, 0) rotate(${s * 360}deg) scale(1.08, 0.88)`, offset: (LAND + squashEnd) / 2 });
+            frames.push({ transform: `translate(0, 0) rotate(${s * 360}deg) scale(1, 1)`, offset: squashEnd });
+            const WOBBLE = [-7, 6, -4, 2, 0];
+            WOBBLE.forEach((deg, i) => {
+                frames.push({ transform: `translate(0, 0) rotate(${s * 360 + deg}deg) scale(1, 1)`, offset: squashEnd + (1 - squashEnd) * (i + 1) / WOBBLE.length });
+            });
+        }
+
+        if (victim.flightAnim) victim.flightAnim.cancel();
+        victim.flightAnim = victim.el.animate(frames, { duration: ms, easing: 'linear' });
+        victim.flightKind = 'throw';
+        const anim = victim.flightAnim;
+        anim.onfinish = () => { if (victim.flightAnim === anim) victim.flightAnim = null; };
+        return ms;
+    }
+
+    /**
+     * 必殺技がとどめになった時、カメラを力士二人が映るくらいまで寄せる。
+     * 土俵(#stage)を scale / translate で拡大する（揺れ演出の transform とは別のプロパティなので重ならない）。
+     *   kind : 'throw' なら、投げられて高く上がる相手を追ってカメラも少し上がる
+     *   ms   : 飛ばされる動きの長さ
+     */
+    zoomOnFinisher(a, b, kind, ms) {
+        const stage = document.getElementById('stage');
+        if (!stage) return;
+        const W = stage.offsetWidth || 1200, H = stage.offsetHeight || 525;
+        const RIKISHI_W = 130, MARGIN = 40;
+        // 映したい縦の範囲（土俵の上からの位置）。頭（髷や構えで大きくなった分も含む）から足元の少し下まで
+        const VIEW_TOP = 170, VIEW_BOTTOM = H - 22;
+
+        // 技が当たった時の画面の揺れは、拡大すると大きなぶれに見えるので止める
+        stage.classList.remove('shake');
+
+        // 二人（飛ばされた側は着地点）が収まる横幅と、頭から足元までが収まる高さから倍率を決める
+        const left = Math.min(a.x, b.x) - MARGIN;
+        const right = Math.max(a.x, b.x) + RIKISHI_W + MARGIN;
+        let Z = Math.min(W / Math.max(1, right - left), H / (VIEW_BOTTOM - VIEW_TOP));
+        Z = Math.max(1, Math.min(Z, cfg('UI.FINISH_ZOOM_MAX', 2.2)));
+
+        // 二人の真ん中を画面の真ん中に置く。
+        // 土俵の端で決まって、真ん中にそろえると画面の外側が映ってしまう時は、
+        // 外側が映らないところまで倍率を下げ、その分だけ中心を内側へ寄せる。
+        const cx0 = (a.x + b.x) / 2 + RIKISHI_W / 2;
+        if (cx0 - W / (2 * Z) < 0) Z = Math.max(1, Math.min(Z, W / Math.min(W, right)));
+        if (cx0 + W / (2 * Z) > W) Z = Math.max(1, Math.min(Z, W / (W - Math.max(0, left))));
+        const halfW = W / (2 * Z), halfH = H / (2 * Z);
+        const cx = Math.min(Math.max(cx0, halfW), W - halfW);
+        const cy = Math.min(Math.max((VIEW_TOP + VIEW_BOTTOM) / 2, halfH), H - halfH);
+        const tx = W / 2 - Z * cx;
+        const ty = H / 2 - Z * cy;
+
+        // 投げは相手が高く上がるので、その間だけカメラも上へついていく（掴み投げの山なりに合わせる）。
+        // ただし土俵の上端より上（外側）は映さない
+        const maxLift = Z * (cy - halfH);
+        const liftAt = (u) => (kind === 'throw')
+            ? Math.min(maxLift, 190 * 4 * u * (1 - u) * 0.7 * Z) : 0;
+
+        // 寄せる・ついていく・止まるを1本の動きにまとめる（別々に動かすと途中で一瞬ずれてぶれて見える）
+        const total = Math.max(ms || 0, 600);
+        const ZOOM_IN = Math.min(1, 450 / total);   // 最初の0.45秒で寄り切る
+        const LAND = 0.85, STEPS = 24;
+        const frames = [];
+        for (let i = 0; i <= STEPS; i++) {
+            const t = i / STEPS;
+            const e = 1 - Math.pow(1 - Math.min(1, t / ZOOM_IN), 3);   // 寄りの進み具合（なめらかに止まる）
+            const u = Math.min(1, (t * total) / (ms || total) / LAND);  // 投げの山なりの進み具合
+            const s = 1 + (Z - 1) * e;
+            frames.push({ scale: String(s), translate: `${tx * e}px ${ty * e + liftAt(u) * e}px`, offset: t });
+        }
+
+        if (this.cameraAnim) { this.cameraAnim.cancel(); this.cameraAnim = null; }
+        stage.style.transition = 'none';
+        stage.style.transformOrigin = '0 0';
+        stage.style.scale = String(Z);
+        stage.style.translate = `${tx}px ${ty}px`;
+        this.cameraAnim = stage.animate(frames, { duration: total, easing: 'linear' });
+        const cam = this.cameraAnim;
+        cam.onfinish = () => { if (this.cameraAnim === cam) this.cameraAnim = null; };
+    }
+
+    /** とどめのズームを元に戻す */
+    resetCameraZoom(instant = false) {
+        const stage = document.getElementById('stage');
+        if (!stage) return;
+        if (this.cameraAnim) {
+            // 動きの途中で戻す時は、今見えている位置から戻し始める
+            try { this.cameraAnim.commitStyles(); } catch (e) {}
+            this.cameraAnim.cancel(); this.cameraAnim = null;
+        }
+        if (!stage.style.scale && !stage.style.translate) return;
+        void stage.offsetWidth;
+        stage.style.transition = instant ? 'none' : 'scale 0.8s ease-in-out, translate 0.8s ease-in-out';
+        stage.style.scale = '';
+        stage.style.translate = '';
+    }
+
+    /** ぶちかまし：当てられた側が、こまのように素早く回りながら飛ばされ、止まった所で少しふらつく（スタン） */
+    //   finisher : とどめの時はふらつかず、止まったらそのまま倒れる
+    animateThrustKnockback(victim, fromX, slow = 1, finisher = false) {
+        const dx = fromX - victim.x;
+        if (!victim.el || Math.abs(dx) < 1) return 0;
+        const spinMs = cfg('UI.THRUST_SPIN_MS', 300) * slow;
+        const stunMs = finisher ? 0 : cfg('UI.THRUST_STUN_MS', 530) * slow;
+        const ms = spinMs + stunMs;
+        const turns = cfg('UI.THRUST_SPIN_TURNS', 2);
+        const spinEnd = spinMs / ms;
+        const STEPS = 16;
+
+        // ① 飛ばされる：横移動と回転を一緒に、勢いよく出て止まる
+        const frames = [];
+        for (let i = 0; i <= STEPS; i++) {
+            const u = i / STEPS;
+            // だんだん遅くなるが、最後まで少し勢いを残す（止まりきってから次の動きに移ると一瞬止まって見えるため）
+            const slide = 0.6 * (1 - Math.pow(1 - u, 2)) + 0.4 * u;
+            frames.push({ transform: `translateX(${dx * (1 - slide)}px) rotateY(${360 * turns * slide}deg) rotateZ(0deg)`, offset: u * spinEnd });
+        }
+        // ② スタン：その場で左右にふらふら揺れて収まる
+        const WOBBLE = finisher ? [] : [-7, 6, -4, 2, 0];
+        WOBBLE.forEach((deg, i) => {
+            const t = spinEnd + (1 - spinEnd) * (i + 1) / WOBBLE.length;
+            frames.push({ transform: `translateX(0px) rotateY(${360 * turns}deg) rotateZ(${deg}deg)`, offset: t });
+        });
+
+        if (victim.flightAnim) victim.flightAnim.cancel();
+        victim.flightAnim = victim.el.animate(frames, { duration: ms, easing: 'linear' });
+        victim.flightKind = 'thrust';
+        const anim = victim.flightAnim;
+        anim.onfinish = () => { if (victim.flightAnim === anim) victim.flightAnim = null; };
+        return ms;
     }
 
     fx(a, b, type) {
@@ -921,6 +1127,13 @@ class UIManager {
             for (let i = 1; i <= 15; i++) { const o = document.createElement('option'); o.text = i; if (i === fixed) o.selected = true; sel.add(o); }
         }
 
+        this.renderCharGrid();
+        this.updatePreview('p1', null); this.updatePreview('p2', null);
+        this.initDraggableIcons();
+    }
+
+    /** 力士アイコンのグリッドを描く（一番下の段は新弟子） */
+    renderCharGrid() {
         const iconGrid = document.querySelector('#char-select-screen #icon-grid') || document.getElementById('icon-grid');
         if (!iconGrid) return;
         iconGrid.innerHTML = '';
@@ -962,15 +1175,33 @@ class UIManager {
                 else if (charData.category === "空きスロット") {
                     classes.push('cat-empty', 'inactive');
                 }
+                if (charData.custom) classes.push('cat-custom');
+                // 公式戦（強さ50以下）で選べない力士の印。公式戦の時だけ薄く表示する（css/online.css）
+                if ((parseInt(charData.total, 10) || 0) > 50) classes.push('over-official');
+                // 団体戦と同じく、右下にコストを出す
+                if (charData.category !== "空きスロット") {
+                    // 能力調整を使う時は全員コスト2
+                    const adjOn = this.game && this.game.statAdjustOn && this.game.statAdjustOn();
+                    icon.innerHTML = costBadgeHtml(adjOn ? 2 : (parseInt(charData['コスト']) || 0), false);
+                }
 
             } else {
                 classes.push('inactive');
             }
+            if (isCustomRowIndex(i)) {
+                classes.push('custom-row');
+                if (!charData) icon.innerHTML = '<span class="custom-empty-label">新弟子</span>';
+            }
             icon.className = classes.join(' ');
             iconGrid.appendChild(icon);
         }
-        this.updatePreview('p1', null); this.updatePreview('p2', null);
-        this.initDraggableIcons();
+        // 選び中の力士の印を付け直す
+        const chars = (this.game && this.game.state && this.game.state.chars) || {};
+        iconGrid.querySelectorAll('.char-select-icon').forEach(icon => {
+            const id = parseInt(icon.dataset.id);
+            if (chars.p1 === id) icon.classList.add('p1-active');
+            if (chars.p2 === id) icon.classList.add('p2-active');
+        });
     }
 
     initDraggableIcons() {
@@ -1130,6 +1361,8 @@ class UIManager {
 
         if (charId !== null) {
             charData = RIKISHI_DATA.find(d => d.id === charId);
+            // 個人戦で能力調整を使う時は、カードにも調整後の能力・強さを出す
+            if ((playerId === 'p1' || playerId === 'p2') && this.game && this.game.adjustedChar) charData = this.game.adjustedChar(charData);
             if (charData) {
                 if (charData.category === "レジェンド") container.classList.add('cat-legend');
                 else if (charData.category === "ドリーム") container.classList.add('cat-dream');
@@ -1327,6 +1560,13 @@ class UIManager {
         const modal = document.getElementById('bgm-modal');
         if (modal) modal.classList.remove('active');
 
+        // 音楽プレイヤーを閉じたら、見出しを選曲用に戻す
+        if (this.playerMode) {
+            this.playerMode = false;
+            const h2 = document.querySelector('#bgm-modal .modal-header h2');
+            if (h2 && h2.firstChild) h2.firstChild.textContent = 'BGM SELECT ';
+        }
+
         // 視聴中だった場合は視聴音声を止める
         if (this.previewAudio) {
             this.previewAudio.pause();
@@ -1443,6 +1683,17 @@ class UIManager {
     }
 
     selectRandomAlbum() {
+        // 音楽プレイヤーでは、すべての曲からおまかせで流す
+        if (this.playerMode) {
+            // ランダムを選ぶだけ。▶ で、すべての曲からおまかせで流す
+            this.playerShuffle = true;
+            this.playerList = this.playerTracksOf('all');
+            this.tempSelectedFile = 'random';
+            this.tempSelectedName = 'ランダム';
+            this.renderAlbums();
+            this.updateFixedControls();
+            return;
+        }
         // ランダム選択時は視聴を止めるが、メインテーマの復帰は行わない
         if (this.tempSelectedFile !== 'random' && this.isPreviewing) {
             if (this.previewAudio) {
@@ -1508,7 +1759,119 @@ class UIManager {
         this.updateFixedControls();
     }
 
+    // ---------------------------------------------------------------
+    // 音楽プレイヤー（タイトルの「音楽」）
+    // 選曲の画面をそのまま使い、曲を押すとすぐ流れる。前・次・一時停止ができ、
+    // 曲が終わるとアルバムの次の曲へ進む。「ランダム」はすべての曲からおまかせで流す。
+    // ---------------------------------------------------------------
+    openMusicPlayer() {
+        this.playerMode = true;
+        this.playerShuffle = false;
+        this.playerList = [];
+        this.playerIndex = -1;
+        this.openBgmModal();
+        this.tempSelectedFile = null;
+        this.tempSelectedName = '';
+        const h2 = document.querySelector('#bgm-modal .modal-header h2');
+        if (h2 && h2.firstChild) h2.firstChild.textContent = 'MUSIC PLAYER ';
+        this.renderAlbums();
+        this.updateFixedControls();
+    }
+
+    /** いま表示している一覧（アルバム／曲一覧）を再生の順番にする */
+    playerTracksOf(albumId) {
+        const all = (typeof BGM_DATA !== 'undefined') ? BGM_DATA : [];
+        return (!albumId || albumId === 'all') ? all : all.filter(b => b.albumId === albumId);
+    }
+
+    playerPlayFile(file) {
+        if (!this.playerShuffle) this.playerList = this.playerTracksOf(this.currentAlbumId);
+        this.playerIndex = this.playerList.findIndex(b => b.file === file);
+        const track = this.playerList[this.playerIndex];
+        if (!track) return;
+
+        if (this.previewAudio) { this.previewAudio.pause(); this.previewAudio = null; }
+        // タイトルの曲は、プレイヤーを閉じるまで消しておく（閉じるとフェードインで戻る）
+        if (typeof SoundFX !== 'undefined') {
+            if (SoundFX.openingAudio) SoundFX.openingAudio.volume = 0;
+            if (SoundFX.charSelectAudio) SoundFX.charSelectAudio.volume = 0;
+            this.isMutedForPreview = true;
+        }
+        // 曲は一度まるごと読み込んでから流す（置き場所によっては途中から流せない＝スライダーが効かないため）
+        const audio = new Audio();
+        const src = `assets/bgm/${track.file}`;
+        fetch(src).then(r => r.blob()).then(b => {
+            if (this.previewAudio !== audio) return;
+            if (this.playerBlobUrl) URL.revokeObjectURL(this.playerBlobUrl);   // 前の曲の分は片付ける
+            this.playerBlobUrl = URL.createObjectURL(b);
+            audio.src = this.playerBlobUrl;
+            audio.play().catch(e => console.warn(e));
+        }).catch(() => { audio.src = src; audio.play().catch(() => {}); });
+        audio.volume = (typeof SoundFX !== 'undefined' ? SoundFX.bgmVolume : 1) * 0.66;
+        audio.onended = () => { if (this.previewAudio === audio) this.playerStep(1); };
+        // 曲の位置のスライダーと時間の表示を、流れに合わせて動かす
+        audio.ontimeupdate = () => { if (this.previewAudio === audio) this.paintPlayerTime(); };
+        audio.onloadedmetadata = () => { if (this.previewAudio === audio) this.paintPlayerTime(); };
+        this.previewAudio = audio;
+        this.playingFile = track.file;   // いま読み込んでいる曲（選んだ曲と違えば ▶ でそちらに替える）
+        this.isPreviewing = true;
+        this.playerPaused = false;
+        this.tempSelectedFile = track.file;
+        this.tempSelectedName = track.name;
+        if (document.getElementById('track-view')?.style.display === 'block') this.renderTracks(this.currentAlbumId);
+        this.updateFixedControls();
+    }
+
+    /** 前の曲(-1)・次の曲(+1)。ランダムの時は次も おまかせ */
+    playerStep(dir) {
+        if (!this.playerList.length) return;
+        if (this.playerShuffle) {
+            const next = this.playerList[Math.floor(Math.random() * this.playerList.length)];
+            this.playerPlayFile(next.file);
+            return;
+        }
+        const i = (this.playerIndex + dir + this.playerList.length) % this.playerList.length;
+        this.playerPlayFile(this.playerList[i].file);
+    }
+
+    /** 曲の位置のスライダーと「今の時間／曲の長さ」を更新する（スライダーを触っている間は動かさない） */
+    paintPlayerTime() {
+        const a = this.previewAudio;
+        const seek = document.getElementById('player-seek');
+        const t = document.getElementById('player-time');
+        const d = document.getElementById('player-dur');
+        if (!seek || !t || !d) return;
+        const fmt = s => (!isFinite(s) || s < 0) ? '0:00' : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+        // 別の曲を選んでいる間は、まだ流れていないので 0 にしておく
+        const same = this.tempSelectedFile === this.playingFile;
+        const cur = (a && same) ? a.currentTime : 0, dur = (a && same) ? a.duration : 0;
+        t.textContent = fmt(cur);
+        d.textContent = fmt(dur);
+        if (!this.playerSeeking && dur) seek.value = Math.round(cur / dur * 1000);
+    }
+
+    playerTogglePause() {
+        // 選んだ曲がまだ流れていなければ、その曲を最初から流す
+        if (this.tempSelectedFile === 'random') { this.playerStep(1); return; }
+        if (this.tempSelectedFile && this.tempSelectedFile !== 'random' && this.tempSelectedFile !== this.playingFile) {
+            this.playerPlayFile(this.tempSelectedFile); return;
+        }
+        const a = this.previewAudio;
+        if (!a) return;
+        if (a.paused) { a.play().catch(() => {}); this.playerPaused = false; }
+        else { a.pause(); this.playerPaused = true; }
+        this.updateFixedControls();
+    }
+
     selectTempTrack(file, name) {
+        // 音楽プレイヤーでは、行を押すと選ぶだけ（流すのは ▶ を押した時）
+        if (this.playerMode) {
+            this.playerShuffle = false;
+            this.tempSelectedFile = file;
+            this.tempSelectedName = name;
+            this.renderTracks(this.currentAlbumId);
+            return;
+        }
         // 別の曲を選んだ時は視聴を止めるが、メインテーマの復帰は行わない
         if (this.tempSelectedFile !== file && this.isPreviewing) {
             if (this.previewAudio) {
@@ -1526,6 +1889,48 @@ class UIManager {
     updateFixedControls() {
         const footer = document.querySelector('#bgm-modal .modal-footer');
         if (!footer) return;
+
+        // 音楽プレイヤーの操作：曲名・再生／停止・曲の位置のスライダー・閉じる
+        // （曲は一覧の行を押して選ぶ。前の曲・次の曲のボタンは置かない）
+        if (this.playerMode) {
+            // 選んでいる曲が流れている時だけ「止める」の印。別の曲を選んだら ▶ でその曲に替わる
+            const playing = this.previewAudio && !this.playerPaused && this.tempSelectedFile === this.playingFile;
+            const now = this.tempSelectedName ? `♪ ${this.tempSelectedName}` : '曲を選んでください';
+            const dis = this.tempSelectedFile ? '' : 'disabled';
+            footer.innerHTML = `
+                <div id="bgm-status-text" class="player-title"><span class="player-title-inner">${now}</span></div>
+                <div class="player-seek">
+                    <button class="btn preview-btn player-play ${playing ? 'is-playing' : ''}" ${dis} onclick="game.ui.playerTogglePause()" title="${playing ? '止める' : '流す'}">${playing ? '❚❚' : '▶'}</button>
+                    <span id="player-time" class="player-time">0:00</span>
+                    <input id="player-seek" class="player-seek-bar" type="range" min="0" max="1000" value="0" step="1" ${dis}>
+                    <span id="player-dur" class="player-time">0:00</span>
+                    <button class="btn confirm-btn" onclick="game.ui.closeBgmModal()">閉じる</button>
+                </div>
+            `;
+            // スライダーを動かすと、その位置から流す
+            const seek = document.getElementById('player-seek');
+            seek.onpointerdown = () => { this.playerSeeking = true; };
+            seek.onpointerup = seek.onchange = () => { this.playerSeeking = false; };
+            seek.oninput = () => {
+                const a = this.previewAudio;
+                if (a && a.duration) a.currentTime = a.duration * seek.value / 1000;
+                this.paintPlayerTime();
+            };
+            this.paintPlayerTime();
+            // 曲名が欄に入りきらない時は、電光掲示板のように左へ流して全部見せる
+            requestAnimationFrame(() => {
+                const box = footer.querySelector('.player-title');
+                const inner = footer.querySelector('.player-title-inner');
+                if (!box || !inner) return;
+                const over = inner.scrollWidth - box.clientWidth;
+                if (over > 2) {
+                    inner.style.setProperty('--shift', `-${over + 8}px`);
+                    inner.style.setProperty('--dur', `${Math.max(4, (over + 8) / 30 + 3)}s`);
+                    inner.classList.add('marquee');
+                }
+            });
+            return;
+        }
 
         const isRandom = this.tempSelectedFile === 'random';
         const previewText = this.isPreviewing ? '■ 停止' : '▶ 視聴';

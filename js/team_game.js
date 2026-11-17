@@ -48,9 +48,19 @@ class TeamGameManager {
         document.body.classList.add('loaded');
     }
 
-    selectTeamChar(player, index, charId) {
+    /**
+     * 編成の枠に力士を入れる（null で外す）。
+     *   opts.fromNet : 遠征で相手から届いた時は true（遠征では自分の側しか自分では変えられない）
+     */
+    selectTeamChar(player, index, charId, opts = {}) {
+        const online = (typeof Online !== 'undefined' && Online.active);
+        if (online && !opts.fromNet) {
+            // 遠征：相手の枠は触れない。ランダムは端末ごとに抽選結果が変わるので使えない
+            if (player !== Online.side || charId === RANDOM_CHAR_ID) return;
+        }
         this.state.teams[player][index] = charId;
         this.ui.updateTeamDisplay();
+        if (online && !opts.fromNet) Online.sendTeamSelect(index, charId);
     }
 
     goToTeamSelect(seType = 'random') {
@@ -243,6 +253,21 @@ class TeamGameManager {
         };
         checkCPU('p1');
         checkCPU('p2');
+        // 遠征：相手の選出が先に届いていたら、ここで受け取る（選んだ力士は取組まで見せない）
+        if (typeof Online !== 'undefined' && Online.active) Online.applyPendingTeamSecret();
+    }
+
+    /** 遠征：相手の選出（出場する力士・勝ち抜きの出場順）を受け取る */
+    applyRemoteSecret(side, sel, order) {
+        if (this.state.secretReady[side]) return;
+        if (this.state.rule === 'kachinuki') this.state.orderPick[side] = order || [0, 1, 2];
+        else this.state.secretSelection[side] = sel;
+        this.state.secretReady[side] = true;
+        const stamp = document.getElementById(`secret-${side}-ready`);
+        if (stamp) stamp.classList.add('active');
+        if (this.state.rule === 'kachinuki') this.updateKachinukiCircles(side);
+        if (typeof SoundFX !== 'undefined') SoundFX.playTone('parry');
+        this.checkSecretReady();
     }
 
     buildSecretPanel(player) {
@@ -289,14 +314,20 @@ class TeamGameManager {
         if (!this.state.isSecretPhase) return;
         const controls = typeof settings !== 'undefined' ? settings.current.controls : null;
         if (!controls) return;
+        // 遠征：自分の側だけを、1P用・2P用どちらのキーでも選べる
+        const online = (typeof Online !== 'undefined' && Online.active);
+        const players = online ? [Online.side] : ['p1', 'p2'];
 
-        ['p1', 'p2'].forEach(player => {
+        players.forEach(player => {
                 if (this.state.secretReady[player]) return;
-                const k = controls[player];
+                const keySets = online ? [controls.p1, controls.p2] : [controls[player]];
                 let idx = -1;
-                if (e.code === k.l) idx = 0;
-                else if (e.code === k.u) idx = 1;
-                else if (e.code === k.r) idx = 2;
+                keySets.forEach(k => {
+                    if (idx !== -1) return;
+                    if (e.code === k.l) idx = 0;
+                    else if (e.code === k.u) idx = 1;
+                    else if (e.code === k.r) idx = 2;
+                });
                 if (idx === -1) return;
 
                 if (this.state.rule === 'kachinuki') {
@@ -308,6 +339,7 @@ class TeamGameManager {
                     if (this.state.orderPick[player].length >= 3) {
                         this.state.secretReady[player] = true;
                         document.getElementById(`secret-${player}-ready`).classList.add('active');
+                        if (online) Online.sendTeamSecret(this.state.round, null, this.state.orderPick[player]);
                         this.checkSecretReady();
                     }
                     return;
@@ -318,6 +350,7 @@ class TeamGameManager {
                     this.state.secretReady[player] = true;
                     document.getElementById(`secret-${player}-ready`).classList.add('active');
                     if (typeof SoundFX !== 'undefined') SoundFX.playTone('parry');
+                    if (online) Online.sendTeamSecret(this.state.round, idx, null);
                     this.checkSecretReady();
                 }
             });
@@ -640,7 +673,11 @@ class TeamGameManager {
             ? `<span style="color:${teamColor};">${winner === 'p1' ? '1P組' : '2P組'}</span> 優勝！`
             : titleText;
         html += `<div class="winner-anim" style="position:relative; z-index:10; font-size:4rem; color:gold; font-weight:900; text-shadow:4px 4px 0 #000; font-family: 'Shippori Mincho', serif;">${titleHtml}</div>`;
-        html += `<div id="final-btn-container"><button class="btn" onclick="window.teamGame.teamRematch()">同じ条件で再戦</button><button id="auto-top-btn" class="btn">力士選択へ (5)</button></div>`;
+        // 遠征では、どちらかが押したボタンを両者で同時に行う（勝手に戻る秒読みはしない）
+        const online = (typeof Online !== 'undefined' && Online.active);
+        if (online) Online.finalDone = false;
+        const rematchCall = online ? "Online.finalAction('team-rematch')" : 'window.teamGame.teamRematch()';
+        html += `<div id="final-btn-container"><button class="btn" onclick="${rematchCall}">同じ条件で再戦</button><button id="auto-top-btn" class="btn">力士選択へ${online ? '' : ' (5)'}</button></div>`;
         const matchInfo = document.getElementById('match-info');
         if (matchInfo) matchInfo.innerHTML = html;
 
@@ -656,6 +693,7 @@ class TeamGameManager {
                     this.finalAdvanceTimer = null;
                     this.goToTeamSelect('random');
                 };
+                if (online) { if (autoBtn) autoBtn.onclick = () => Online.finalAction('team-select'); return; }
                 if (autoBtn) autoBtn.onclick = executeReturn;
                 if (this.finalAdvanceTimer) clearInterval(this.finalAdvanceTimer);
                 this.finalAdvanceTimer = setInterval(() => {

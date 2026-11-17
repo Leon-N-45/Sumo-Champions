@@ -1,0 +1,33 @@
+# スモチャン 遠征の仲介サーバー（Cloudflare Workers の無料プランで動く）
+# 公開（デプロイ）: このフォルダで  npx wrangler deploy
+name = "sumocham-signal"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# 部屋（フレンドマッチ・相手探しで決まった部屋）
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+# 相手探し（ランダムマッチ・公式戦）の待合室
+[[durable_objects.bindings]]
+name = "LOBBY"
+class_name = "Lobby"
+
+# 公式戦のレート・番付の名簿
+[[durable_objects.bindings]]
+name = "RANKING"
+class_name = "Ranking"
+
+# 無料プランで使える SQLite 型の Durable Object として登録する
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Lobby"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["Ranking"]

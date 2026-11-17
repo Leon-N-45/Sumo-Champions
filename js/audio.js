@@ -196,12 +196,114 @@ const SoundFX = {
                 try {
                     const audio = new Audio(src);
                     this.testAudio = audio; // 今回の音を記録
+                    // とどめの演出中は、行司の声などもゆっくりにする（声の高さは変えない）
+                    if (this.voiceSlowRate && this.voiceSlowRate !== 1) {
+                        audio.preservesPitch = true;
+                        audio.playbackRate = this.voiceSlowRate;
+                    }
                     audio.volume = Math.max(0, Math.min(1, volume * this.voiceVolume));
                     audio.onended = () => { this.testAudio = null; resolve(); };
                     audio.onerror = () => { resolve(); };
                     audio.play().catch(e => { resolve(); });
                 } catch(e) { resolve(); }
             });
+    },
+
+    /**
+     * 掛け声（必殺技の「どすこい」など）を、ほかのボイスと別に最後まで鳴らす。
+     * playVoice は新しいボイスで前のボイスを止めるため、取組中に行司の「のこった」が
+     * 鳴ると掛け声が途中で切れてしまう。こちらは止めず、止められもしない。
+     */
+    playShout(name, volume = 1.0) {
+        if (!name) return;
+        let src = name;
+        if (!src.includes('/')) src = 'assets/se/' + src;
+        if (!src.toLowerCase().endsWith('.mp3')) src = src + '.mp3';
+        try {
+            const audio = new Audio(src);
+            audio.volume = Math.max(0, Math.min(1, volume * this.voiceVolume));
+            audio.play().catch(() => {});
+        } catch (e) {}
+    },
+
+    /**
+     * とどめの演出用：ボイスをゆっくり（低く）再生し、エコーをかける。
+     *   rate : 再生速度（0.6 なら6割の速さ。声の高さは変えない）
+     * Web Audio を使えない環境では、ゆっくり再生だけ行う。
+     */
+    async playVoiceDramatic(name, rate = 0.6) {
+        if (!name) return;
+        let src = name;
+        if (!src.includes('/')) src = 'assets/se/' + src;
+        if (!src.toLowerCase().endsWith('.mp3')) src = src + '.mp3';
+
+        if (!this.ctx) { try { this.init(); } catch (e) {} }
+
+        // 声の高さを保ったまま、速さだけ遅くする（ブラウザの再生機能を使う）
+        const audio = new Audio(src);
+        audio.preservesPitch = true;
+        audio.playbackRate = rate;
+
+        try {
+            if (!this.ctx) throw new Error('no audio context');
+            if (this.ctx.state === 'suspended') this.ctx.resume();
+            const ctx = this.ctx;
+            // 声の長さ（やまびこの間隔に使う）
+            if (!(audio.duration > 0)) {
+                await new Promise((res) => { audio.onloadedmetadata = res; audio.onerror = res; setTimeout(res, 1500); });
+            }
+            const source = ctx.createMediaElementSource(audio);
+
+            const vol = Math.max(0, Math.min(1, this.voiceVolume));
+            const dry = ctx.createGain(); dry.gain.value = vol;
+            // やまびこ：声を言い終わってから、同じ声が遠くからだんだん小さく返ってくる。
+            // 返ってくる間隔は声の長さ＋少しの間。返るたびに小さく、少しこもった音にする
+            const voiceSec = (audio.duration > 0 ? audio.duration : 1) / rate;
+            const gap = Math.min(4.5, voiceSec + 0.12);
+            const delay = ctx.createDelay(5.0); delay.delayTime.value = gap;
+            const feedback = ctx.createGain(); feedback.gain.value = 0.5;     // 1回返るごとに半分の大きさ
+            const muffle = ctx.createBiquadFilter(); muffle.type = 'lowpass'; muffle.frequency.value = 2200;
+            const wet = ctx.createGain(); wet.gain.value = vol * 0.55;
+
+            source.connect(dry); dry.connect(ctx.destination);
+            source.connect(delay); delay.connect(muffle); muffle.connect(feedback); feedback.connect(delay);
+            muffle.connect(wet); wet.connect(ctx.destination);
+            audio.play().catch(() => {});
+            // 4回ほど返ったら、繰り返しの経路を切る（切る前に静かに消しておく）
+            audio.onended = () => {
+                const now = ctx.currentTime, endAt = now + gap * 4;
+                wet.gain.setValueAtTime(wet.gain.value, endAt - gap);
+                wet.gain.linearRampToValueAtTime(0, endAt);
+            };
+            setTimeout(() => {
+                try { source.disconnect(); feedback.disconnect(); muffle.disconnect(); delay.disconnect(); wet.disconnect(); dry.disconnect(); } catch (e) {}
+            }, (voiceSec + gap * 4) * 1000 + 400);
+        } catch (e) {
+            audio.volume = Math.max(0, Math.min(1, this.voiceVolume));
+            audio.play().catch(() => {});
+        }
+    },
+
+    // ---------------------------------------------------------------
+    // とどめの演出：曲と行司の声を、とどめの間だけゆっくりにする
+    // ---------------------------------------------------------------
+
+    /**
+     * とどめの演出を始める。曲と行司の声を、音の高さはそのままで遅くする。
+     *   rate : 速さ（0.7 なら7割）
+     */
+    startFinisherAudio(rate = 0.7) {
+        this.voiceSlowRate = rate;
+        const bgm = this.bgmAudio;
+        if (!bgm) return;
+        bgm.preservesPitch = true;
+        bgm.playbackRate = rate;
+    },
+
+    /** とどめの演出を終え、曲と声を元の速さに戻す */
+    endFinisherAudio() {
+        this.voiceSlowRate = 1;
+        if (this.bgmAudio) this.bgmAudio.playbackRate = 1;
     },
 
     // 再生中のボイス（四股名・開始コール・紹介ボイス等）を止める
