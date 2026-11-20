@@ -206,12 +206,13 @@
     background: #fff; cursor: pointer; font-family: 'M PLUS Rounded 1c', sans-serif;
 }
 .parts-cat.active { background: #111; color: #fff; }
-.parts-types { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.parts-types { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .parts-type {
-    display: flex; flex-direction: column; align-items: center; padding: 3px 2px 2px;
+    display: flex; align-items: center; justify-content: center; padding: 2px;
+    aspect-ratio: 1 / 1; min-width: 0;
     border: 2px solid #b9ab88; border-radius: 6px; background: #fff; cursor: pointer;
 }
-.parts-type canvas { width: 54px; height: 54px; }
+.parts-type canvas { width: 100%; height: 100%; display: block; }
 .parts-type span { font-size: 0.68rem; font-weight: bold; white-space: nowrap; }
 .parts-type.active { border-color: #745399; box-shadow: 0 0 0 2px #c9b3e0; }
 .parts-colors { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }

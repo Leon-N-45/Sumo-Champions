@@ -126,6 +126,61 @@ class GameManager {
         });
     }
 
+    /**
+     * CPUの先読み用の「お試し計算」。今の状態を保存してから fn を呼び、
+     * fn の中で simStep を何刻み進めても、終わったら必ず元の状態に戻す。
+     * お試し中（this.sandbox）は表示・音・勝負ありの演出を一切出さない。
+     */
+    runSandbox(fn) {
+        if (typeof NetSim === 'undefined' || this.sandbox) return null;
+        this.installSandboxGuards();
+        const snap = NetSim.snapshot(this);
+        const keep = {
+            processingEnd: this.state.processingEnd, lastHit: this.lastHit, finisherHoldMs: this.finisherHoldMs,
+            aiP1: this.aiP1, aiP2: this.aiP2,
+            grappleInd: this.ui.els.grappleInd ? this.ui.els.grappleInd.style.display : null,
+            cls1: this.p1.el.className, cls2: this.p2.el.className
+        };
+        this.sandbox = true;
+        this.sandboxEnd = null;
+        try { return fn(); }
+        finally {
+            this.sandbox = false;
+            NetSim.restore(this, snap);
+            this.state.processingEnd = keep.processingEnd;
+            this.lastHit = keep.lastHit;
+            this.finisherHoldMs = keep.finisherHoldMs;
+            this.aiP1 = keep.aiP1; this.aiP2 = keep.aiP2;
+            if (this.ui.els.grappleInd) this.ui.els.grappleInd.style.display = keep.grappleInd;
+            this.p1.el.className = keep.cls1; this.p2.el.className = keep.cls2;
+        }
+    }
+
+    /** お試し計算の間は、表示(ui)と音(SoundFX)の関数を何もしないようにする（最初の1回だけ仕掛ける） */
+    installSandboxGuards() {
+        if (this._sandboxGuarded) return;
+        this._sandboxGuarded = true;
+        const game = this;
+        const guard = (obj) => {
+            const names = new Set();
+            for (let o = obj; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
+                Object.getOwnPropertyNames(o).forEach(n => {
+                    const d = Object.getOwnPropertyDescriptor(o, n);
+                    if (n !== 'constructor' && d && typeof d.value === 'function') names.add(n);
+                });
+            }
+            names.forEach(n => {
+                const f = obj[n];
+                obj[n] = function (...args) {
+                    if (game.sandbox) return /^play/.test(n) ? Promise.resolve() : undefined;
+                    return f.apply(this, args);
+                };
+            });
+        };
+        guard(this.ui);
+        if (typeof SoundFX !== 'undefined') guard(SoundFX);
+    }
+
     /** この刻みの入力を決め、押した瞬間の操作を処理する */
     setFrameInput(now) {
         const prev = this.frameKeys;
@@ -334,8 +389,9 @@ class GameManager {
     /** 能力調整をかけた力士データ（元のデータは変えない） */
     adjustedChar(d) {
         if (!d || !this.statAdjustOn()) return d;
-        const adj = adjustToStrength(d, 50);
-        return { ...d, ...adj, total: calcStrength(adj), 'コスト': 2 };
+        // 実際の強さは 49〜51 だが、カードには 50 と出す
+        const adj = adjustToStrength(d);
+        return { ...d, ...adj, total: 50, 'コスト': 2 };
     }
 
     /** 能力調整を入れた・切った時：アイコンのコストとカードの能力を描き直す */
@@ -1422,6 +1478,10 @@ class GameManager {
         if (m.isCPU && mInput.wantsTech) {
             if (m.charge >= 100 && mInput.wantsCharge) { this.handleGrappleCounter(m, s, 'throw'); return; }
         }
+        // CPUが組んだ側でも、プレイヤーと同じく「溜め＋前（50%以上）」で押し返し（ぶちかまし）を出せる
+        else if (m.isCPU && mInput.wantsFwd && mInput.wantsCharge && m.charge >= 50) {
+            this.handleGrappleCounter(m, s, 'push'); return;
+        }
 
         if (mInput.wantsFwd) {
             const spdBase = cfg('ACTION.SPEED_BASE', 2.8);
@@ -1721,6 +1781,7 @@ class GameManager {
      * 見た目だけの動きで、操作できるようになるタイミング（cooldown）は変えない。
      */
     showSpecialPose(p, poseClass, finishClass, slow = 1) {
+        if (this.sandbox) return;
         if (typeof NetSim !== 'undefined' && NetSim.defer(this, 'showSpecialPose', arguments)) return;
         p.animClass = poseClass;
         if (p.poseTimer) clearTimeout(p.poseTimer);
@@ -1817,15 +1878,17 @@ class GameManager {
      * 見た目と音だけで、位置・判定・勝敗はすでに決まっている。
      */
     presentSpecialMove(atk, def, kind, defFromX, poseClass, finishClass) {
+        if (this.sandbox) return;
         // 巻き戻しの計算し直し中は見せない（NetSim が後でまとめて1回だけ見せる）
         if (typeof NetSim !== 'undefined' && NetSim.defer(this, 'presentSpecialMove', arguments)) return;
         const finisher = def.stamina <= 0 || this.isOutOfRing(def);
         const slow = finisher ? cfg('UI.FINISH_SLOW_RATE', 2.5) : 1;
 
         if (finisher) {
-            SoundFX.playVoiceDramatic('dosukoi', cfg('UI.FINISH_VOICE_RATE', 0.7));
-            // 曲と行司の声も同じ速さに（音の高さは変えない）。「勝負あり」で元に戻す
-            SoundFX.startFinisherAudio(cfg('UI.FINISH_VOICE_RATE', 0.7));
+            // とどめの掛け声は、曲よりさらにゆっくり（音の高さは変えない）
+            SoundFX.playVoiceDramatic('dosukoi', cfg('UI.FINISH_SHOUT_RATE', 0.5));
+            // 曲と行司の声もゆっくりに（音の高さは変えない）、曲の音量は下げる。「勝負あり」で元に戻す
+            SoundFX.startFinisherAudio(cfg('UI.FINISH_VOICE_RATE', 0.7), cfg('UI.FINISH_BGM_VOLUME', 0.3));
         }
         else SoundFX.playShout('dosukoi');
 
@@ -1835,12 +1898,16 @@ class GameManager {
         this.showSpecialPose(atk, poseClass, finishClass, slow);
 
         // とどめの時は、カメラを二人に寄せ、ゆっくりの動きを見終わるまで「勝負あり」を待たせる
-        if (finisher) this.ui.zoomOnFinisher(atk, def, kind, ms || 0);
+        if (finisher) {
+            this.ui.zoomOnFinisher(atk, def, kind, ms || 0);
+            this.ui.startSlowmoFx(def, ms || 0);   // 残像・ふちのぼかしなど、スローモーションの見た目
+        }
         this.finisherHoldMs = finisher ? (ms || 0) : 0;
     }
 
     resolveDraw() {
         if(this.state.processingEnd) return;
+        if (this.sandbox) { this.sandboxEnd = 'draw'; this.state.processingEnd = true; return; }
         if (typeof NetSim !== 'undefined' && !NetSim.allowDecision()) return;
         this.state.processingEnd = true;
         this.finisherHoldMs = 0;   // 同体では必殺技のとどめ待ちを使わない
@@ -2011,6 +2078,8 @@ class GameManager {
 
     resolveMatch(winner, loser, reason) {
         if(this.state.processingEnd) return;
+        // CPUの先読み（お試し計算）では、勝ち負けだけ記録して演出はしない
+        if (this.sandbox) { this.sandboxEnd = winner.id; this.state.processingEnd = true; return; }
         // オンライン対戦では、両者の入力が確定した刻みでだけ勝負ありにする（予想の入力で決着させない）
         if (typeof NetSim !== 'undefined' && !NetSim.allowDecision()) return;
         this.state.processingEnd = true;

@@ -392,33 +392,81 @@ function calcPlayType(s) {
 }
 
 /**
- * 能力調整（個人戦の試験的なルール）：力士の特徴（どの能力が高い・低いか）を残したまま、
- * 強さを目標（50）にできるだけ近づける。目標を超えることは絶対にない。
- *   1. 6つの能力に同じ倍率をかける（強い力士は全体に下がり、弱い力士は全体に上がる）
- *      目標を超えない一番大きい倍率を探す
- *   2. 端数の切り捨てで余った分は、倍率どおりより低くなっている能力から1つずつ足して目標に寄せる
- * 返り値は能力6つ（power〜reversal）の入ったオブジェクト。
+ * 能力調整（個人戦の試験的なルール）：力士の特徴を残したまま、強さを 49〜51 にそろえる（表示は50）。
+ *   1. 6つの能力に同じ数を足す・引く（能力どうしの差がそのまま残るので、得意・不得意も型も変わらない）
+ *      強い力士は全体に下がり、弱い力士は全体に上がる
+ *   2. それでも 49〜51 に入らない分は、能力を1〜数個だけ ±1 して合わせる。
+ *      その時は「タイプが変わらない」「能力の高い低いの順番がなるべく崩れない」組み合わせを選ぶ
+ * 返り値は能力6つ（power〜reversal）の入ったオブジェクト。強さは必ず 49〜51（51 を超えない）。
  */
-function adjustToStrength(src, target = 50) {
+const ADJUST_MIN = 49, ADJUST_MAX = 51;
+
+function adjustToStrength(src) {
     const base = {};
-    STAT_KEYS.forEach(k => { base[k] = Math.max(1, Number(src[k]) || 1); });
-    const make = (m) => {
-        const o = {};
-        STAT_KEYS.forEach(k => { o[k] = Math.max(1, Math.min(10, Math.round(base[k] * m))); });
-        return o;
+    STAT_KEYS.forEach(k => { base[k] = Math.max(1, Math.min(10, Number(src[k]) || 1)); });
+    const clamp = v => Math.max(1, Math.min(10, v));
+    const typeOf = s => calcPlayType(s);
+    const baseType = typeOf(base);
+
+    // 能力の高い低いの順番が、元とどれだけ食い違っているか（同点になる・入れ替わる組の数）
+    const inversions = (t) => {
+        let n = 0;
+        for (let i = 0; i < STAT_KEYS.length; i++) {
+            for (let j = i + 1; j < STAT_KEYS.length; j++) {
+                const a = STAT_KEYS[i], b = STAT_KEYS[j];
+                if (Math.sign(base[a] - base[b]) !== Math.sign(t[a] - t[b])) n++;
+            }
+        }
+        return n;
     };
-    let best = make(0), bestStr = calcStrength(best), bestM = 0;
-    for (let m = 0.05; m <= 10; m += 0.005) {
-        const o = make(m), s = calcStrength(o);
-        if (s <= target && s >= bestStr) { best = o; bestStr = s; bestM = m; }
+
+    // 1. 全体を同じ数だけずらす：強さが 50 に一番近くなるずらし方
+    let shifted = null, shiftedGap = Infinity;
+    for (let c = -9; c <= 9; c++) {
+        const t = {};
+        STAT_KEYS.forEach(k => { t[k] = clamp(base[k] + c); });
+        const gap = Math.abs(calcStrength(t) - 50) + (calcStrength(t) > ADJUST_MAX ? 0.5 : 0);
+        if (gap < shiftedGap) { shifted = t; shiftedGap = gap; }
     }
-    // 余りを埋める：倍率どおりの値より低くなっている能力（＝切り捨てられた能力）から順に1ずつ
-    for (let guard = 0; guard < 60; guard++) {
-        const cands = STAT_KEYS
-            .filter(k => best[k] < 10 && calcStrength({ ...best, [k]: best[k] + 1 }) <= target)
-            .sort((a, b) => (best[a] - base[a] * bestM) - (best[b] - base[b] * bestM));
-        if (!cands.length) break;
-        best[cands[0]]++;
+
+    // 2. 49〜51 に入るまで、能力を ±1 する組み合わせを探す（変える数が少なく、特徴を崩さないものほど良い）
+    let best = null, bestCost = Infinity;
+    const score = (t, steps) => {
+        const s = calcStrength(t);
+        if (s < ADJUST_MIN || s > ADJUST_MAX) return Infinity;
+        if (typeOf(t) !== baseType) return Infinity;   // タイプは変えない
+        // 1つの能力を大きく動かすほど特徴が崩れるので、動かした量の2乗で数える（少しずつ散らす方が良い）
+        let moved = 0;
+        STAT_KEYS.forEach(k => { const d = t[k] - shifted[k]; moved += d * d; });
+        return moved + inversions(t) * 3 + Math.abs(s - 50) * 0.5;
+    };
+    const search = (t, steps, from) => {
+        const c = score(t, steps);
+        if (c < bestCost) { bestCost = c; best = { ...t }; }
+        if (steps >= 4) return;
+        for (let i = from; i < STAT_KEYS.length * 2; i++) {
+            const k = STAT_KEYS[i >> 1], d = (i & 1) ? -1 : 1;
+            const v = t[k] + d;
+            if (v < 1 || v > 10) continue;
+            t[k] = v;
+            search(t, steps + 1, i);
+            t[k] -= d;
+        }
+    };
+    search({ ...shifted }, 0, 0);
+
+    // 念のため：見つからない時（ほぼ無いはず）は、タイプを問わず 49〜51 に入る一番近い形にする
+    if (!best) {
+        best = { ...shifted };
+        for (let guard = 0; guard < 60 && calcStrength(best) > ADJUST_MAX; guard++) {
+            const k = STAT_KEYS.filter(x => best[x] > 1).sort((a, b) => best[a] - best[b])[0];
+            if (!k) break; best[k]--;
+        }
+        for (let guard = 0; guard < 60 && calcStrength(best) < ADJUST_MIN; guard++) {
+            const k = STAT_KEYS.filter(x => best[x] < 10 && calcStrength({ ...best, [x]: best[x] + 1 }) <= ADJUST_MAX)
+                .sort((a, b) => best[b] - best[a])[0];
+            if (!k) break; best[k]++;
+        }
     }
     return best;
 }

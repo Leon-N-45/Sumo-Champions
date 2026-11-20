@@ -265,8 +265,16 @@ const SoundFX = {
             const muffle = ctx.createBiquadFilter(); muffle.type = 'lowpass'; muffle.frequency.value = 2200;
             const wet = ctx.createGain(); wet.gain.value = vol * 0.55;
 
-            source.connect(dry); dry.connect(ctx.destination);
-            source.connect(delay); delay.connect(muffle); muffle.connect(feedback); feedback.connect(delay);
+            // スローモーションらしさ：高い音を少し丸め、低い音を太くして、広い場所で鳴るような長い響きを足す
+            const low = ctx.createBiquadFilter(); low.type = 'lowshelf'; low.frequency.value = 220; low.gain.value = 6;
+            const soft = ctx.createBiquadFilter(); soft.type = 'lowpass'; soft.frequency.value = 3400;
+            const reverb = ctx.createConvolver(); reverb.buffer = this.slowmoImpulse(ctx, 2.6);
+            const revGain = ctx.createGain(); revGain.gain.value = vol * 0.6;
+
+            source.connect(low); low.connect(soft);
+            soft.connect(dry); dry.connect(ctx.destination);
+            soft.connect(reverb); reverb.connect(revGain); revGain.connect(ctx.destination);
+            soft.connect(delay); delay.connect(muffle); muffle.connect(feedback); feedback.connect(delay);
             muffle.connect(wet); wet.connect(ctx.destination);
             audio.play().catch(() => {});
             // 4回ほど返ったら、繰り返しの経路を切る（切る前に静かに消しておく）
@@ -276,12 +284,29 @@ const SoundFX = {
                 wet.gain.linearRampToValueAtTime(0, endAt);
             };
             setTimeout(() => {
-                try { source.disconnect(); feedback.disconnect(); muffle.disconnect(); delay.disconnect(); wet.disconnect(); dry.disconnect(); } catch (e) {}
+                try {
+                    source.disconnect(); low.disconnect(); soft.disconnect(); reverb.disconnect(); revGain.disconnect();
+                    feedback.disconnect(); muffle.disconnect(); delay.disconnect(); wet.disconnect(); dry.disconnect();
+                } catch (e) {}
             }, (voiceSec + gap * 4) * 1000 + 400);
         } catch (e) {
             audio.volume = Math.max(0, Math.min(1, this.voiceVolume));
             audio.play().catch(() => {});
         }
+    },
+
+    /** 長い響き（広いホールのような残響）の元になる音。左右で少しずらした、だんだん消える雑音 */
+    slowmoImpulse(ctx, sec) {
+        const key = 'imp' + sec;
+        if (this._impulses && this._impulses[key]) return this._impulses[key];
+        const len = Math.floor(ctx.sampleRate * sec);
+        const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+        for (let ch = 0; ch < 2; ch++) {
+            const d = buf.getChannelData(ch);
+            for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.5);
+        }
+        (this._impulses = this._impulses || {})[key] = buf;
+        return buf;
     },
 
     // ---------------------------------------------------------------
@@ -292,18 +317,38 @@ const SoundFX = {
      * とどめの演出を始める。曲と行司の声を、音の高さはそのままで遅くする。
      *   rate : 速さ（0.7 なら7割）
      */
-    startFinisherAudio(rate = 0.7) {
+    startFinisherAudio(rate = 0.7, bgmRatio = 0.3) {
         this.voiceSlowRate = rate;
         const bgm = this.bgmAudio;
         if (!bgm) return;
         bgm.preservesPitch = true;
         bgm.playbackRate = rate;
+        // 曲の音量も下げて、とどめの声を目立たせる（0.3秒かけて下げる）
+        this.fadeBgmTo(this.bgmVolume * 0.66 * bgmRatio, 300);
+    },
+
+    /** 曲の音量を ms かけて target へ動かす */
+    fadeBgmTo(target, ms) {
+        const bgm = this.bgmAudio;
+        if (this._bgmFade) { clearInterval(this._bgmFade); this._bgmFade = null; }
+        if (!bgm) return;
+        target = Math.max(0, Math.min(1, target));
+        const from = bgm.volume, t0 = performance.now();
+        this._bgmFade = setInterval(() => {
+            const u = Math.min(1, (performance.now() - t0) / ms);
+            try { bgm.volume = from + (target - from) * u; } catch (e) {}
+            if (u >= 1) { clearInterval(this._bgmFade); this._bgmFade = null; }
+        }, 30);
     },
 
     /** とどめの演出を終え、曲と声を元の速さに戻す */
     endFinisherAudio() {
+        const wasSlow = this.voiceSlowRate !== undefined && this.voiceSlowRate !== 1;
         this.voiceSlowRate = 1;
-        if (this.bgmAudio) this.bgmAudio.playbackRate = 1;
+        if (this.bgmAudio) {
+            this.bgmAudio.playbackRate = 1;
+            if (wasSlow || this._bgmFade) this.fadeBgmTo(this.bgmVolume * 0.66, 600);   // 音量を元に戻す
+        }
     },
 
     // 再生中のボイス（四股名・開始コール・紹介ボイス等）を止める

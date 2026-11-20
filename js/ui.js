@@ -888,8 +888,55 @@ class UIManager {
         cam.onfinish = () => { if (this.cameraAnim === cam) this.cameraAnim = null; };
     }
 
+    /**
+     * とどめのスローモーションの見た目：
+     *   - 画面のふちをぼかし、色を少し落として、周りを暗くする（真ん中の二人はくっきり）
+     *   - 飛ばされる力士に、うすくぼけた残像を何枚も残す
+     * resetCameraZoom（「勝負あり」の後）で消える。
+     */
+    startSlowmoFx(victim, ms) {
+        this.stopSlowmoFx(true);
+        const box = document.getElementById('stage-container');
+        const stage = document.getElementById('stage');
+        if (!box || !stage) return;
+        const fx = document.createElement('div');
+        fx.id = 'slowmo-fx';
+        fx.innerHTML = '<div class="sm-grade"></div><div class="sm-edge"></div><div class="sm-vignette"></div>';
+        stage.after(fx);
+        void fx.offsetWidth;
+        fx.classList.add('on');
+
+        // 残像：動きの間、少しずつ今の姿を写し取って、ゆっくり消す
+        const el = victim && victim.el;
+        if (!el) return;
+        const until = performance.now() + Math.max(300, (ms || 0) * 0.9);
+        this.slowmoTimer = setInterval(() => {
+            if (performance.now() > until || !el.isConnected) { clearInterval(this.slowmoTimer); this.slowmoTimer = null; return; }
+            const ghost = el.cloneNode(true);
+            ghost.removeAttribute('id');
+            ghost.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));
+            ghost.classList.add('slowmo-ghost');
+            ghost.style.transform = getComputedStyle(el).transform;
+            el.before(ghost);
+            const a = ghost.animate([{ opacity: 0.45 }, { opacity: 0 }], { duration: 520, easing: 'ease-out' });
+            a.onfinish = () => ghost.remove();
+        }, 70);
+    }
+
+    /** スローモーションの見た目を消す（instant なら、すぐに） */
+    stopSlowmoFx(instant = false) {
+        if (this.slowmoTimer) { clearInterval(this.slowmoTimer); this.slowmoTimer = null; }
+        document.querySelectorAll('.slowmo-ghost').forEach(g => g.remove());
+        const fx = document.getElementById('slowmo-fx');
+        if (!fx) return;
+        if (instant) { fx.remove(); return; }
+        fx.classList.remove('on');
+        setTimeout(() => fx.remove(), 600);
+    }
+
     /** とどめのズームを元に戻す */
     resetCameraZoom(instant = false) {
+        this.stopSlowmoFx(instant);
         const stage = document.getElementById('stage');
         if (!stage) return;
         if (this.cameraAnim) {

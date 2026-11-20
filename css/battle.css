@@ -336,3 +336,16 @@
     /* 中心(600)から右へ80pxの位置（右端からの距離で指定） */
     right: 530px;
 }
+/* --- とどめのスローモーション（ui.startSlowmoFx） --- */
+#slowmo-fx { position: absolute; inset: 0; pointer-events: none; z-index: 40; opacity: 0; transition: opacity 0.5s ease; }
+#slowmo-fx.on { opacity: 1; transition: opacity 0.25s ease; }
+#slowmo-fx .sm-grade { position: absolute; inset: 0; backdrop-filter: saturate(0.65) contrast(1.12) brightness(0.96); -webkit-backdrop-filter: saturate(0.65) contrast(1.12) brightness(0.96); }
+#slowmo-fx .sm-edge {
+    position: absolute; inset: 0;
+    backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
+    -webkit-mask-image: radial-gradient(ellipse 62% 60% at 50% 55%, transparent 50%, #000 100%);
+    mask-image: radial-gradient(ellipse 62% 60% at 50% 55%, transparent 50%, #000 100%);
+}
+#slowmo-fx .sm-vignette { position: absolute; inset: 0; background: radial-gradient(ellipse 70% 65% at 50% 55%, transparent 45%, rgba(10, 8, 30, 0.6) 100%); }
+.rikishi.slowmo-ghost { pointer-events: none; z-index: 9; filter: blur(2px) brightness(1.15); animation: none !important; }
+.rikishi.slowmo-ghost * { animation-play-state: paused !important; }

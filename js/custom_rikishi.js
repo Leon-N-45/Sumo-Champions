@@ -360,14 +360,14 @@ const CreateScreen = {
             const b = document.createElement('button');
             b.className = 'parts-type' + (r[cat].type === id ? ' active' : '');
             const cv = document.createElement('canvas');
-            cv.width = cv.height = 72;
+            cv.width = cv.height = 96;
             const trial = FaceParts.normalize(r);
             trial[cat] = { ...trial[cat], type: id };
             FaceParts.renderPart(octx, trial, cat);
             // パーツのある範囲を、見本の枠いっぱいに（縦横の比は保つ）
             // （範囲がキャンバスの外にはみ出しても、ブラウザがはみ出た分だけ切って縮尺は保つ）
             const s = Math.max(area[2], area[3]);
-            cv.getContext('2d').drawImage(off, area[0] + (area[2] - s) / 2, area[1] + (area[3] - s) / 2, s, s, 0, 0, 72, 72);
+            cv.getContext('2d').drawImage(off, area[0] + (area[2] - s) / 2, area[1] + (area[3] - s) / 2, s, s, 0, 0, 96, 96);
             b.appendChild(cv);
             b.onclick = () => { r[cat].type = id; this.partsChanged(); };
             types.appendChild(b);
