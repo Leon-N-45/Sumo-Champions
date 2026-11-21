@@ -547,6 +547,23 @@ class TeamUIManager {
     }
 
     checkStartCondition() {
+        // 公式戦・団体戦の相手探し前：自分の3人だけで判断し、「相手を探す」を押せるようにする
+        if (typeof Online !== 'undefined' && Online.active && Online.prepick) {
+            const mine = this.game.state.teams.p1;
+            const ok = mine.every(id => id !== null) && this.teamCost(mine) <= this.MAX_COST;
+            const btn = document.getElementById('team-prepick-search');
+            if (btn) btn.disabled = !ok;
+            const instr = document.getElementById('team-select-instruction-text');
+            if (instr) {
+                instr.style = '';
+                instr.innerHTML = (mine.every(id => id !== null) && !ok)
+                    ? `<span style="color:#ef4444; font-weight:bold;">コストオーバーです（ 上限  ${this.MAX_COST} ）</span>`
+                    : 'コスト9以下の3人を選べ！（勝ち抜き戦・力士の重複なし）';
+            }
+            const old = document.getElementById('start-btn-container');
+            if (old) old.style.display = 'none';
+            return;
+        }
         const p1Team = this.game.state.teams.p1;
         const p2Team = this.game.state.teams.p2;
 

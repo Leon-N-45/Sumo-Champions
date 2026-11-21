@@ -77,6 +77,10 @@ const SoundFX = {
         if (typeof FIXED_BATTLE_BGM !== 'undefined' && FIXED_BATTLE_BGM) {
             targetFile = FIXED_BATTLE_BGM;
         }
+        // 遠征：二人の選んだ曲から、部屋を作った側が決めた曲（二人とも同じ曲になる）
+        else if (this.onlineBgmFile && typeof Online !== 'undefined' && Online.active) {
+            targetFile = this.onlineBgmFile;
+        }
         // 優先順位1: セーブデータ (settings)
         else if (typeof settings !== 'undefined' && settings.current && settings.current.bgmFile) {
             targetFile = settings.current.bgmFile;
@@ -261,9 +265,9 @@ const SoundFX = {
             const voiceSec = (audio.duration > 0 ? audio.duration : 1) / rate;
             const gap = Math.min(4.5, voiceSec + 0.12);
             const delay = ctx.createDelay(5.0); delay.delayTime.value = gap;
-            const feedback = ctx.createGain(); feedback.gain.value = 0.5;     // 1回返るごとに半分の大きさ
+            const feedback = ctx.createGain(); feedback.gain.value = 0.5;     // 2回目は半分の大きさで返る
             const muffle = ctx.createBiquadFilter(); muffle.type = 'lowpass'; muffle.frequency.value = 2200;
-            const wet = ctx.createGain(); wet.gain.value = vol * 0.55;
+            const wet = ctx.createGain(); wet.gain.value = vol * 0.35;
 
             // スローモーションらしさ：高い音を少し丸め、低い音を太くして、広い場所で鳴るような長い響きを足す
             const low = ctx.createBiquadFilter(); low.type = 'lowshelf'; low.frequency.value = 220; low.gain.value = 6;
@@ -277,10 +281,10 @@ const SoundFX = {
             soft.connect(delay); delay.connect(muffle); muffle.connect(feedback); feedback.connect(delay);
             muffle.connect(wet); wet.connect(ctx.destination);
             audio.play().catch(() => {});
-            // 4回ほど返ったら、繰り返しの経路を切る（切る前に静かに消しておく）
+            // やまびこは2回。2回目が返り終わったら、3回目が鳴る前に繰り返しの経路を消す
             audio.onended = () => {
-                const now = ctx.currentTime, endAt = now + gap * 4;
-                wet.gain.setValueAtTime(wet.gain.value, endAt - gap);
+                const endAt = ctx.currentTime + gap * 2;
+                wet.gain.setValueAtTime(wet.gain.value, endAt - 0.15);
                 wet.gain.linearRampToValueAtTime(0, endAt);
             };
             setTimeout(() => {
@@ -288,7 +292,7 @@ const SoundFX = {
                     source.disconnect(); low.disconnect(); soft.disconnect(); reverb.disconnect(); revGain.disconnect();
                     feedback.disconnect(); muffle.disconnect(); delay.disconnect(); wet.disconnect(); dry.disconnect();
                 } catch (e) {}
-            }, (voiceSec + gap * 4) * 1000 + 400);
+            }, (voiceSec + gap * 2 + 2.6) * 1000 + 400);
         } catch (e) {
             audio.volume = Math.max(0, Math.min(1, this.voiceVolume));
             audio.play().catch(() => {});

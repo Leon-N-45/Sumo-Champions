@@ -30,7 +30,7 @@
 
                 <div id="sumo-format-container">
                     <button class="back-to-top-btn format-btn" onclick="game.ui.openBgmModal()">選曲</button>
-                    <button class="back-to-top-btn format-btn" onclick="document.getElementById('team-format-popover').classList.toggle('active')">相撲形式</button>
+                    <button class="back-to-top-btn format-btn format-rules-btn" onclick="document.getElementById('team-format-popover').classList.toggle('active')">相撲形式</button>
                    <div id="team-format-popover" class="format-popover" style="position: absolute; top: 50px; right: 0; background: #fff; border: 3px solid #000; border-radius: 8px; padding: 20px;  z-index: 400; display: none; flex-direction: column; gap: 15px; width: 320px;">
                         <div class="popover-close-btn" onclick="document.getElementById('team-format-popover').classList.remove('active')" style="cursor:pointer; text-align:right; font-weight:bold;">✕</div>
                         
@@ -67,6 +67,11 @@
                         </div>
                     </div>
                     <style>#team-format-popover.active { display: flex !important; }</style>
+                </div>
+
+                <!-- 公式戦・団体戦：先に自分の3人を決めてから相手を探す -->
+                <div id="team-prepick-bar" class="team-prepick-bar">
+                  <button id="team-prepick-search" class="btn prepick-search" disabled onclick="Online.beginSearch()">相手を探す</button>
                 </div>
 
                 <div id="icon-grid" class="char-icon-grid"></div>
@@ -163,31 +168,96 @@
     <div class="net-scaling-wrapper">
       <button class="back-to-top-btn net-back" onclick="Online.backToTitle()">戻る</button>
       <div class="net-title">遠征</div>
-      <!-- 自分の遠征名と、公式戦の番付・レート -->
+      <!-- 自分の部屋名（登録した後は「編集」で変えられる） -->
       <div class="net-profile">
-        <label class="net-profile-name">遠征名
-          <input id="net-player-name" type="text" maxlength="10" autocomplete="off" onchange="Online.renamePlayer(this.value)">
+        <label class="net-profile-name">部屋名
+          <input id="net-player-name" type="text" maxlength="10" autocomplete="off" readonly
+                 onkeydown="if (event.key === 'Enter') Online.toggleNameEdit()">
         </label>
-        <div id="net-player-rank" class="net-player-rank"></div>
+        <button id="net-name-edit" class="net-name-edit" title="部屋名を変える" aria-label="部屋名を変える" onclick="Online.toggleNameEdit()"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm17.71-10.21a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/></svg></button>
       </div>
-      <div class="net-menu">
-        <button class="btn main-start-btn" onclick="Online.openFriendMatch()">フレンドマッチ</button>
-        <button class="btn main-start-btn" onclick="Online.startRandom('free')">ランダムマッチ</button>
-        <button class="btn main-start-btn" onclick="Online.startRandom('official')">公式戦</button>
+      <div class="net-menu net-menu-groups">
+        <div class="net-group">
+          <div class="net-group-title">非公式戦</div>
+          <div class="net-group-btns">
+            <button class="btn main-start-btn" onclick="Online.openFriendMatch()">友人戦</button>
+            <button class="btn main-start-btn" onclick="Online.startRandom('free')">誰でも戦</button>
+          </div>
+        </div>
+        <div class="net-group">
+          <div class="net-group-title">公式戦</div>
+          <div class="net-group-btns">
+            <div class="net-btn-col">
+              <button class="btn main-start-btn" onclick="Online.startRandom('official')">個人戦</button>
+              <div id="net-rate-single" class="net-rate-under">レート：－<br>番付：－</div>
+            </div>
+            <div class="net-btn-col">
+              <button class="btn main-start-btn" onclick="Online.startRandom('official-team')">団体戦</button>
+              <div id="net-rate-team" class="net-rate-under">レート：－<br>番付：－</div>
+            </div>
+          </div>
+          <a href="#" class="net-rules-link" onclick="event.preventDefault(); Online.showRules()">取組要項を見る</a>
+        </div>
       </div>
-      <div class="net-note">
-        フレンドマッチ：部屋番号を教え合って、友達と対戦します<br>
-        ランダムマッチ：力士を選んでから、同じ時間に探している人と三番勝負<br>
-        公式戦：強さ50以下の力士で三番勝負。勝つとレートが上がり、番付が決まります
+
+      <!-- 公式戦（レート戦）の取組要項 -->
+      <div id="net-rules" class="net-register-overlay" onclick="if (event.target === this) this.classList.remove('active')">
+        <div class="net-register-box net-rules-box">
+          <div class="popover-close-btn net-rules-close" onclick="document.getElementById('net-rules').classList.remove('active')">✕</div>
+          <div class="net-register-title">取組要項</div>
+          <div class="net-rules-cols">
+            <div class="net-rules-col">
+              <div class="net-rules-head">個人戦</div>
+              <ul>
+                <li>強さ50以下の力士で戦う</li>
+                <li>入門で作った新弟子・ランダムも使える</li>
+                <li>三番勝負（先に二勝した方の勝ち）</li>
+                <li>能力調整はなし</li>
+                <li>相手の力士は取組が始まるまで分からない</li>
+              </ul>
+            </div>
+            <div class="net-rules-col">
+              <div class="net-rules-head">団体戦</div>
+              <ul>
+                <li>コスト合計9以下の3人で組む</li>
+                <li>力士の重複はなし</li>
+                <li>入門で作った新弟子・ランダムも使える</li>
+                <li>勝ち抜き戦（出場順は取組の前に決める）</li>
+                <li>相手の組は取組が始まるまで分からない</li>
+              </ul>
+            </div>
+          </div>
+          <div class="net-rules-head">レートと番付</div>
+          <ul class="net-rules-common">
+            <li>個人戦と団体戦は、それぞれ別のレート（はじめは1500）</li>
+            <li>勝つと上がり、負けると下がる（強い相手に勝つほど大きく上がる）</li>
+            <li>番付はレートの順位で決まる：横綱 上位1%／大関 3%／関脇 6%／小結 10%／前頭 35%／十両 45%／幕下 60%／三段目 75%／序二段 90%／序ノ口</li>
+            <li>まだ一度も戦っていない間は「前相撲」</li>
+            <li>取組の途中で抜けると負けになる</li>
+            <li>二人の結果の報告が食い違った時は、その勝負はレートに入らない</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 初めての時：部屋名を登録してもらう -->
+      <div id="net-register" class="net-register-overlay">
+        <div class="net-register-box">
+          <div class="net-register-title">部屋名を登録しよう</div>
+          <div class="net-register-desc">遠征で相手に見える名前です（10文字まで）<br>ほかの人と同じ名前は登録できません</div>
+          <input id="net-register-name" type="text" maxlength="10" autocomplete="off" placeholder="〇〇部屋"
+                 onkeydown="if (event.key === 'Enter') Online.registerName()">
+          <div id="net-register-error" class="net-register-error"></div>
+          <button class="btn main-start-btn" onclick="Online.registerName()">登録</button>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- フレンドマッチ：合流したら個人戦・団体戦を選ぶ -->
+  <!-- 友人戦：合流したら個人戦・団体戦を選ぶ -->
   <div id="friendmode-screen" class="screen">
     <div class="net-scaling-wrapper">
       <button class="back-to-top-btn net-back" onclick="Online.backToTitle()">戻る</button>
-      <div class="net-title">フレンドマッチ</div>
+      <div class="net-title">友人戦</div>
       <div id="friendmode-status" class="net-random-rule"></div>
       <div class="net-menu">
         <button class="btn main-start-btn" onclick="Online.chooseFriendMode('single')">個人戦</button>
@@ -200,7 +270,7 @@
   <!-- ランダムマッチ・公式戦の相手探し -->
   <div id="random-screen" class="screen">
     <div class="net-scaling-wrapper">
-      <div id="random-title" class="net-title">ランダムマッチ</div>
+      <div id="random-title" class="net-title">誰でも戦</div>
       <div id="random-rule" class="net-random-rule"></div>
       <div class="net-searching"><span></span><span></span><span></span></div>
       <div id="random-status" class="net-random-status"></div>
@@ -220,7 +290,7 @@
   <div id="friend-screen" class="screen">
     <div class="net-scaling-wrapper">
       <button class="back-to-top-btn net-back" onclick="Online.backToTitle()">戻る</button>
-      <div class="net-title">フレンドマッチ</div>
+      <div class="net-title">友人戦</div>
       <div class="net-boxes">
         <div id="net-create-box" class="net-box">
           <div class="net-box-title">部屋を作る</div>
@@ -238,7 +308,7 @@
       <div id="net-status" class="net-status"></div>
       <div class="net-test">
         <label>つなぎ方
-          <select id="net-mode" class="custom-select" onchange="document.getElementById('net-delay-row').style.display = this.value === 'local' ? '' : 'none'">
+          <select id="net-mode" class="custom-select" onchange="['net-delay-row','net-loss-row'].forEach(id => document.getElementById(id).style.display = this.value === 'local' ? '' : 'none')">
             <option value="net" selected>インターネット</option>
             <option value="local">同じパソコンの2画面（試験用）</option>
           </select>
@@ -252,12 +322,21 @@
             <option value="200">200ミリ秒（かなり遠い）</option>
           </select>
         </label>
+        <label id="net-loss-row" style="display:none;">通信の欠け（試験用）
+          <select id="net-loss" class="custom-select">
+            <option value="0">なし</option>
+            <option value="0.05">5%が届かない</option>
+            <option value="0.15">15%が届かない</option>
+          </select>
+        </label>
       </div>
     </div>
   </div>
 
   <!-- 遠征中のつながり方の表示（直接 or サーバー経由） -->
   <div id="net-conn-badge" class="net-conn-badge"></div>
+  <!-- 遠征中の通信の状態（往復時間・遅らせ幅・巻き戻し・つながり方）。押すと隠せる -->
+  <div id="net-stats" class="net-stats" title="押すと隠します" onclick="this.classList.toggle('hidden')"></div>
 
   <!-- 新力士入門（キャラクリエイト）。中身の動きは js/custom_rikishi.js -->
   <div id="create-screen" class="screen">
@@ -474,6 +553,17 @@
                 <div class="setting-row" style="justify-content:flex-end;">
                     <span id="input-mode-note" style="font-size:1.05rem; opacity:0.75;"></span>
                 </div>
+                <div class="setting-row">
+                    <label>遠征の操作</label>
+                    <select id="setting-net-delay" class="custom-select" style="font-size:1.3rem; padding:5px 15px;"
+                            onchange="settings.current.netDelay = this.value; settings.save();">
+                        <option value="reaction">反応優先（おすすめ）</option>
+                        <option value="smooth">見た目優先</option>
+                    </select>
+                </div>
+                <div class="setting-row" style="justify-content:flex-end;">
+                    <span style="font-size:1.05rem; opacity:0.75;">反応優先：操作がすぐ効く（相手の動きの補正は少し増える）。二人とも反応優先の時だけ使われます</span>
+                </div>
 
                 <details class="key-config-accordion">
                     <summary class="accordion-summary">キーコンフィグ</summary>
@@ -542,7 +632,7 @@
             
             <div id="sumo-format-container">
                 <button class="back-to-top-btn format-btn" onclick="game.ui.openBgmModal()">選曲</button>
-                <button class="back-to-top-btn format-btn" onclick="document.getElementById('format-popover').classList.toggle('active')">相撲形式</button>
+                <button class="back-to-top-btn format-btn format-rules-btn" onclick="document.getElementById('format-popover').classList.toggle('active')">相撲形式</button>
 
                 <div id="format-popover">
                     <div class="popover-close-btn" onclick="document.getElementById('format-popover').classList.remove('active')">✕</div>
@@ -580,12 +670,11 @@
             
             <!-- ランダムマッチ・公式戦：先に力士を選んでから相手を探す -->
             <div id="prepick-bar" class="prepick-bar">
-              <div id="prepick-title" class="prepick-title">ランダムマッチ</div>
+              <div id="prepick-title" class="prepick-title">誰でも戦</div>
               <button id="prepick-search" class="btn prepick-search" disabled onclick="Online.beginSearch()">相手を探す</button>
             </div>
             <div class="prepick-hidden-card">
               <div class="prepick-q">？</div>
-              <div class="prepick-note">相手の力士は<br>取組が始まるまで<br>分かりません</div>
             </div>
 
             <div id="start-btn-container">

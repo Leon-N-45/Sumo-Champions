@@ -632,7 +632,9 @@ class UIManager {
     }
 
     updateRikishi(p) {
-        p.el.style.left = `${p.x}px`;
+        // 遠征：巻き戻しで位置が変わった時は、見た目だけ少しずつ寄せる（NetSim.drawOffset）
+        const off = (typeof NetSim !== 'undefined' && NetSim.drawOffset) ? NetSim.drawOffset(p.id) : 0;
+        p.el.style.left = `${p.x + off}px`;
 
         const s = p.getPhysiqueScale ? p.getPhysiqueScale() : {x: 1.0, y: 1.0};
 
@@ -780,7 +782,8 @@ class UIManager {
     animateThrowFlight(victim, fromX, slow = 1, finisher = false) {
         const dx = fromX - victim.x;                 // 元の場所までの見た目のずれ
         if (!victim.el || Math.abs(dx) < 1) return 0;
-        const s = dx > 0 ? -1 : 1;                  // 飛んでいく向き（右へ飛ぶなら +1）
+        const turns = cfg('UI.THROW_SPIN_TURNS', 1);    // コマのような横回転の回数（ぶちかましと同じ回り方）
+        const flip = dx > 0 ? -1 : 1;                   // とどめの縦回転の向き（飛んでいく向きに回る）
         const flightMs = cfg('UI.THROW_FLIGHT_MS', 600) * slow;   // 投げ始めから着地まで
         // とどめ：着地後の残りは全体の15%（triggerSlowMotion・カメラが LAND=0.85 を前提にしている）
         // 通常：着地の踏ん張り(120ms) ＋ スタンでふらつく時間
@@ -788,31 +791,34 @@ class UIManager {
             ? flightMs / 0.85
             : flightMs + (120 + cfg('UI.THROW_STUN_MS', 650)) * slow;
         const LAND = flightMs / ms;   // 着地するまでの割合
-        const HEIGHT = 190;    // 山なりの高さ(px)
+        const HEIGHT = cfg('UI.THROW_HEIGHT', 190);    // 山なりの高さ(px)
         const STEPS = 16;
 
-        // 投げ始めから着地まで同じ速さで一回転させながら、山なりに背後へ飛ばす。
-        // 一番高い所（相手の頭上）でちょうど上下さかさま（180度）になり、着地の瞬間に一回転して足から下りる。
+        // 投げ始めから着地まで、ぶちかましと同じくコマのように横回転しながら、山なりに背後へ飛ばす。
         // 回転と横移動は時間に比例させ、高さだけ放物線にする（全体の easing は linear）。
+        // ※ 全部のキーフレームで変形の並び（translate, rotateY, rotateZ, scale）をそろえる。
+        //   そろえないと回転がまとめて計算され、2回転が0回転に見えてしまう
         const frames = [];
         for (let i = 0; i <= STEPS; i++) {
             const u = i / STEPS;
             const x = dx * (1 - u);
             const y = -HEIGHT * 4 * u * (1 - u);
-            frames.push({ transform: `translate(${x}px, ${y}px) rotate(${s * 360 * u}deg)`, offset: LAND * u });
+            // とどめの時だけは、前の回り方（頭が下になるように縦に一回転＝でんぐり返し）
+            const spin = finisher ? `rotateY(0deg) rotateZ(${flip * 360 * u}deg)` : `rotateY(${360 * turns * u}deg) rotateZ(0deg)`;
+            frames.push({ transform: `translate(${x}px, ${y}px) ${spin} scale(1, 1)`, offset: LAND * u });
         }
         if (finisher) {
             // 着地で少し沈んでから元に戻る（倒れる動きと重なるので見た目にはほぼ出ない）
-            frames.push({ transform: `translate(0, 0) rotate(${s * 360}deg) scale(1.08, 0.88)`, offset: LAND + (1 - LAND) * 0.47 });
-            frames.push({ transform: `translate(0, 0) rotate(${s * 360}deg)`, offset: 1 });
+            frames.push({ transform: `translate(0, 0) rotateY(0deg) rotateZ(${flip * 360}deg) scale(1.08, 0.88)`, offset: LAND + (1 - LAND) * 0.47 });
+            frames.push({ transform: `translate(0, 0) rotateY(0deg) rotateZ(${flip * 360}deg) scale(1, 1)`, offset: 1 });
         } else {
             // 着地で沈んで戻り、その場で左右にふらふら揺れて収まる（スタン）
             const squashEnd = LAND + 120 * slow / ms;
-            frames.push({ transform: `translate(0, 0) rotate(${s * 360}deg) scale(1.08, 0.88)`, offset: (LAND + squashEnd) / 2 });
-            frames.push({ transform: `translate(0, 0) rotate(${s * 360}deg) scale(1, 1)`, offset: squashEnd });
+            frames.push({ transform: `translate(0, 0) rotateY(${360 * turns}deg) rotateZ(0deg) scale(1.08, 0.88)`, offset: (LAND + squashEnd) / 2 });
+            frames.push({ transform: `translate(0, 0) rotateY(${360 * turns}deg) rotateZ(0deg) scale(1, 1)`, offset: squashEnd });
             const WOBBLE = [-7, 6, -4, 2, 0];
             WOBBLE.forEach((deg, i) => {
-                frames.push({ transform: `translate(0, 0) rotate(${s * 360 + deg}deg) scale(1, 1)`, offset: squashEnd + (1 - squashEnd) * (i + 1) / WOBBLE.length });
+                frames.push({ transform: `translate(0, 0) rotateY(${360 * turns}deg) rotateZ(${deg}deg) scale(1, 1)`, offset: squashEnd + (1 - squashEnd) * (i + 1) / WOBBLE.length });
             });
         }
 
@@ -863,7 +869,7 @@ class UIManager {
         // ただし土俵の上端より上（外側）は映さない
         const maxLift = Z * (cy - halfH);
         const liftAt = (u) => (kind === 'throw')
-            ? Math.min(maxLift, 190 * 4 * u * (1 - u) * 0.7 * Z) : 0;
+            ? Math.min(maxLift, cfg('UI.THROW_HEIGHT', 190) * 4 * u * (1 - u) * 0.7 * Z) : 0;
 
         // 寄せる・ついていく・止まるを1本の動きにまとめる（別々に動かすと途中で一瞬ずれてぶれて見える）
         const total = Math.max(ms || 0, 600);
@@ -1237,7 +1243,7 @@ class UIManager {
             }
             if (isCustomRowIndex(i)) {
                 classes.push('custom-row');
-                if (!charData) icon.innerHTML = '<span class="custom-empty-label">新弟子</span>';
+                if (!charData) icon.innerHTML = '';   // 空きマスは文字を出さない
             }
             icon.className = classes.join(' ');
             iconGrid.appendChild(icon);
@@ -1942,7 +1948,7 @@ class UIManager {
         if (this.playerMode) {
             // 選んでいる曲が流れている時だけ「止める」の印。別の曲を選んだら ▶ でその曲に替わる
             const playing = this.previewAudio && !this.playerPaused && this.tempSelectedFile === this.playingFile;
-            const now = this.tempSelectedName ? `♪ ${this.tempSelectedName}` : '曲を選んでください';
+            const now = this.tempSelectedName ? `♪ ${this.tempSelectedName}` : '';
             const dis = this.tempSelectedFile ? '' : 'disabled';
             footer.innerHTML = `
                 <div id="bgm-status-text" class="player-title"><span class="player-title-inner">${now}</span></div>
@@ -2035,6 +2041,8 @@ class UIManager {
         }
 
         this.showBGMToast(`${this.tempSelectedName.replace(' (試合ごとにランダム再生)', '')} をセットしました`);
+        // 遠征：選んだ曲を相手にも知らせる（二人の選んだ曲のどちらかが流れる）
+        if (typeof Online !== 'undefined' && Online.connected) Online.sendBgmChoice();
 
         this.closeBgmModal();
         this.renderAlbums();

@@ -33,7 +33,8 @@ class AIController {
         master: 9.2,      // 組み合いで組んだ側か
         caution: 0.44,    // 最悪の予想をどれだけ重く見るか
         noise: 40,        // 判断のブレ（番付が低いほど効く。学習しない）
-        style: 60         // 力士らしさのおまけ点（得意な作戦をどれだけ優先するか。学習しない）
+        style: 60,        // 力士らしさのおまけ点（得意な作戦をどれだけ優先するか。学習しない）
+        yori: 25          // 寄り（溜めずに押して運ぶ）を選びやすくするおまけ点。見ていて楽しいので少し多めに（学習しない）
     };
 
     constructor() {
@@ -146,7 +147,18 @@ class AIController {
     }
 
     // ---------------------------------------------------------------
+    // 毎フレームの判断。最後に「自分から俵を割る」キーを外す（勇み足の防止）
     think(me, opp, grapple) {
+        const keys = this.thinkInner(me, opp, grapple);
+        if (keys.size && !grapple.active && me.cpuLevel >= 2) {
+            const g = this.geometry(me, opp);
+            // 背中側の俵が近いのに下がろうとしている → 下がらない
+            if (keys.has(g.keyBack) && g.myBackEdge < 45) keys.delete(g.keyBack);
+        }
+        return keys;
+    }
+
+    thinkInner(me, opp, grapple) {
         if (this.inashiCooldown > 0) this.inashiCooldown--;
         this.observe(me, opp, grapple);
 
@@ -275,6 +287,17 @@ class AIController {
         // (c) 相手が溜めながら突っ込んでくる（ぶちかまし）→ 間合いを読んでいなす
         if (this.tryInashi(ctx, g)) return true;
 
+        // (c2) ぶつかり合い：相手が溜めずに寄ってきたら、ときどき正面から当たりに行く（押し合い＝ぶつかって弾かれる）
+        const headOn = opp.isPushing && !opp.holdingCharge && this.oppPushFrames >= 4 && g.dist < 260 && g.dist > g.hitDist + 10;
+        if (headOn && !this._clashRolled) {
+            this._clashRolled = true;
+            if (Math.random() < 0.3 && me.stamina > 15 && g.myFrontEdge > 120) {
+                this.tacticState = null;
+                this.startPlan('dash', Math.ceil((g.dist - g.hitDist) / (this.walkSpeed(me, false) * 2)) + 4);
+            }
+        }
+        if (!opp.isPushing) this._clashRolled = false;
+
         // (d) 相手がその場で溜めている
         //   組むと相手の溜めは半分になる。組んだ後の「溜め比べ」で勝てるなら詰めて組み止める。
         //   勝てないなら（組んでも先に押し返される）こちらも溜めて、来たところをいなす／ぶつける
@@ -308,6 +331,10 @@ class AIController {
         // その間の30はまだ間に合うので、できるだけ引きつけてから構える（早すぎると空振り）
         const reachDist = g.hitDist + 30;
         if (g.dist <= g.hitDist + 2) return false;            // もう組まれる距離
+        // いなしが決まると位置が入れ替わり、自分は「相手がいた場所のさらに先」へ出る。
+        // 相手が俵を背負っていると、自分が土俵の外に出てしまう（勇み足）ので構えない（幕下・十両はこれに気づかない）
+        const landRoom = g.oppBackEdge - cfg('ACTION.SWAP_DIST_NORMAL', 80);
+        if (landRoom < 15 && accuracy >= 0.45) return false;
         // 溜めていない寄りは、しばらく前に出続けているもの（本気の寄り）だけを相手にする
         if (!charged && this.oppPushFrames < 7) return false;
         const framesToContact = Math.max(0, g.dist - reachDist) / oppSpeed;
@@ -423,6 +450,8 @@ class AIController {
         if (ctx.ptype === 'テクニック') add('throwAim', 0.5);
         else if (ctx.ptype === 'パワー') add('pushAim', 0.5);
         else if (ctx.ptype === 'スピード') { add('throwAim', 0.25); add('pushAim', 0.25); }
+        // 寄り：組んだ側なら、溜めずに押して運ぶ作戦を少し選びやすく
+        if (policy === 'walk' && ctx.isMaster) b += (this.learned || AIController.LEARNED).yori || 0;
         return b;
     }
 
@@ -608,6 +637,9 @@ class AIController {
         wBuild *= (1 + hStill * 1.0 * A);
         wDash *= (1 - hStill * 0.4 * A);
 
+        // 押し合い・ぶつかり合いを少し増やす（溜めずに前へ出る）
+        wDash *= 1.2; wHold *= 0.85;
+
         // 大関以上(Lv6+)はアグレッシブ
         if (level >= 6 && me.stamina > 18) { wAttack *= 1.3; wDash *= 1.5; wStep *= 1.2; wHold *= 0.4; wBuild *= 0.8; }
 
@@ -650,6 +682,7 @@ class AIController {
         if (me.stamina <= 1.1 || opp.stamina <= 1.1) { this.aiKeys.add(g.keyFwd); return; }
 
         // ③ 先読み：組み合いの作戦を、少し先まで試し計算して選ぶ（上の番付ほど）
+        ctx.isMaster = isMaster;
         if (this.grappleByLookahead(me, opp, grapple, ctx)) return;
 
         // 組んだ瞬間に作戦を決める（投げまで溜める / 50で押し返す / 溜めずに寄り切る）
@@ -657,6 +690,8 @@ class AIController {
             const likesThrow = (think === '技狙い' || ptype === 'テクニック');
             const likesBuchi = (think === '力押し' || ptype === 'パワー');
             let goal = likesThrow ? 'throw' : likesBuchi ? 'push' : (Math.random() < 0.5 ? 'throw' : 'push');
+            // 組んだ側は、ときどき溜めずに押して運ぶ「寄り」を狙う（力押し・パワーは多め）
+            if (isMaster && Math.random() < (likesBuchi ? 0.4 : likesThrow ? 0.15 : 0.3)) goal = 'yori';
             // 相手がよく組んで投げてくる → 投げを待たずに早めに押し返す
             if (Math.random() < this.habitRate('grabThrow') * 2 * A) goal = 'push';
             this.grab = { goal, startFrames: 0 };
@@ -701,6 +736,11 @@ class AIController {
         if (plan.goal === 'push') {
             if (me.charge >= 50 && !oppInashi) this.aiKeys.add(g.keyFwd);
             return;
+        }
+        if (plan.goal === 'yori') {
+            // 寄り：溜めずに前へ押して運ぶ。相手の溜めが危なくなったら溜めて備える（下の投げ狙いへ）
+            if (isMaster && opp.charge < 45) { this.aiKeys.delete(k.d); this.aiKeys.add(g.keyFwd); return; }
+            plan.goal = 'throw';
         }
         // 投げ狙い：前進しない（前進＝50%で押しが出て100に届かない）。d だけで100まで溜める
     }

@@ -168,6 +168,7 @@ const NetSim = {
             p2: this.snapPlayer(game.p2),
             grapple: { active: !!g.active, master: g.master ? g.master.id : null, slave: g.slave ? g.slave.id : null },
             state: { active: game.state.active, tachiai: game.state.tachiai },
+            lastHit: game.lastHit || null,
             frameKeys: [...game.frameKeys],
             prevFrameKeys: [...game.prevFrameKeys]
         };
@@ -182,6 +183,7 @@ const NetSim = {
         game.grapple.slave = byId(s.grapple.slave);
         game.state.active = s.state.active;
         game.state.tachiai = s.state.tachiai;
+        if ('lastHit' in s) game.lastHit = s.lastHit;
         game.frameKeys = new Set(s.frameKeys);
         game.prevFrameKeys = new Set(s.prevFrameKeys);
     },
@@ -198,6 +200,24 @@ const NetSim = {
     // オンライン対戦の刻みの進め方（ロールバック）
     // ---------------------------------------------------------------
     INPUT_DELAY: 2,       // 自分の入力を何刻み遅らせて使うか（相手に届く時間を稼ぎ、巻き戻しを減らす）
+                          // 取組ごとに、部屋を作った側が通信の速さから決めて相手に知らせる（両者で必ず同じ値）
+    isHost: false,        // 部屋を作った側か（入力の遅らせ方・ずれの直しを決める側）
+    delayChooser: null,   // 部屋を作った側が、取組の始めに入力の遅らせ方を決める関数（Online が渡す）
+    MAX_RESYNC: 5,        // 1番の取組でずれを直してよい回数
+    SMOOTH_MAX: 140,      // 巻き戻しの位置のずれを、なめらかに寄せる上限（これより大きい時はそのまま切り替える）
+    SMOOTH_DECAY: 0.65,   // 寄せる速さ（1フレームごとに残すずれの割合。小さいほど早く寄る）
+
+    /** 画面に出す時の位置のずれ（見た目だけ。計算には使わない） */
+    drawOffset(id) {
+        return (this.online && this.started && this.visOff) ? (this.visOff[id] || 0) : 0;
+    },
+
+    /** 計測した値を返して、次の区切りのために数え直す */
+    takeStats() {
+        const s = this.stats || { rollbacks: 0, rolledFrames: 0, maxDepth: 0, stalls: 0 };
+        this.stats = { rollbacks: 0, rolledFrames: 0, maxDepth: 0, stalls: 0 };
+        return s;
+    },
     MAX_PREDICT: 8,       // 相手の入力を予想で進めてよい最大の刻み数。これを超えたら届くまで待つ
     SNAP_KEEP: 20,        // 保存しておく状態の数（巻き戻せる範囲）
     CHECK_EVERY: 60,      // 何刻みごとに状態の要約を送り合ってずれを確かめるか
@@ -224,6 +244,13 @@ const NetSim = {
         this.blockedFrame = null;
         this.checks = new Map();    // 刻み → 自分の状態の要約
         this.desync = false;
+        this.resyncCount = 0;
+        // ① 通信の状態（画面の隅に出す）：巻き戻しの回数・深さ、相手待ち
+        this.stats = { rollbacks: 0, rolledFrames: 0, maxDepth: 0, stalls: 0 };
+        // ④ 巻き戻しで力士の位置が急に変わった時、見た目だけ数フレームかけて寄せるためのずれ
+        this.visOff = { p1: 0, p2: 0 };
+        this.epoch = 0;            // ずれを直した回数（要約の比べ合わせに使う）
+        this.pendingResync = null; // 相手から届いた「正しい状態」（まだその刻みまで進んでいない時に取っておく）
         this.stallCount = 0;
         this.remoteAdv = null;      // 相手から見た「こちらの入力の遅れ」
         this.lastRemoteAt = performance.now();   // 相手の入力が最後に届いた時刻（通信が止まったかの判定用）
@@ -237,6 +264,7 @@ const NetSim = {
     /** オンライン対戦を始める（Online から呼ぶ） */
     begin(game, side, link) {
         this.install(game);
+        this.game = game;
         this.online = true;
         this.side = side;
         this.link = link;
@@ -277,7 +305,10 @@ const NetSim = {
     /** 相手からの通信を受け取る（Online が呼ぶ） */
     receive(msg) {
         if (!this.online || msg.bout !== this.bout) return;
+        // 入力の遅らせ方は、部屋を作った側の値に合わせる（取組が始まる前だけ）
+        if (!this.isHost && !this.started && typeof msg.d === 'number') this.INPUT_DELAY = msg.d;
         if (msg.t === 'ready') { this.remoteReady = true; return; }
+        if (msg.t === 'resync') { this.applyResync(msg); return; }
         if (msg.t === 'in') {
             this.remoteReady = true;   // 入力が届くのは、相手が仕切りに入って始めている証拠
             this.lastRemoteAt = performance.now();
@@ -293,11 +324,15 @@ const NetSim = {
             return;
         }
         if (msg.t === 'sum') {
+            // ずれを直す前に計算した要約は比べない（直した回数＝epoch が同じものだけ比べる）
+            if ((msg.e || 0) !== this.epoch) return;
             const mine = this.checks.get(msg.f);
             if (mine && mine !== msg.sum && !this.desync) {
                 this.desync = true;
                 console.warn(`オンライン対戦：刻み${msg.f}で両者の計算がずれました`, mine, msg.sum);
                 if (this.onDesync) this.onDesync(msg.f);
+                // 部屋を作った側の状態を正しいものとして、相手に送って合わせてもらう
+                if (this.isHost) this.sendResync();
             }
         }
     },
@@ -309,9 +344,14 @@ const NetSim = {
         // --- 立ち合いの待ち合わせ：両者が仕切りに入ったら、同時に刻み0から始める ---
         if (!this.started) {
             if (!game.state.tachiai) return;
-            if (!this.readySent) { this.readySent = true; this.send({ t: 'ready' }); }
+            if (!this.readySent) {
+                // 部屋を作った側は、この取組の入力の遅らせ方を通信の速さから決めて知らせる
+                if (this.isHost && this.delayChooser) this.INPUT_DELAY = this.delayChooser();
+                this.readySent = true;
+                this.send(this.withDelay({ t: 'ready' }));
+            }
             // 相手からの ready が先に届いていても、自分が仕切りに入るまでは始めない
-            if (!this.remoteReady) { this.send({ t: 'ready' }); return; }
+            if (!this.remoteReady) { this.send(this.withDelay({ t: 'ready' })); return; }
             this.started = true;
             // 最初の INPUT_DELAY 刻みは、どちらも「何も押していない」ことにする
             for (let f = 0; f < this.INPUT_DELAY; f++) { this.local[f] = 0; this.remote[f] = 0; }
@@ -323,7 +363,7 @@ const NetSim = {
         const target = this.frame + this.INPUT_DELAY;
         if (this.local[target] === undefined) this.local[target] = this.readLocalButtons(game);
         const from = Math.max(this.INPUT_DELAY, this.remoteAcked + 1, target - 30);
-        this.send({ t: 'in', from, inputs: this.local.slice(from, target + 1), ack: this.remoteConfirmed, adv: this.myAdv() });
+        this.send(this.withDelay({ t: 'in', from, inputs: this.local.slice(from, target + 1), ack: this.remoteConfirmed, adv: this.myAdv() }));
 
         // --- 2. 届いた相手の入力が予想と違えば、その刻みまで巻き戻して計算し直す ---
         let rollFrom = null;
@@ -336,16 +376,33 @@ const NetSim = {
         }
         if (rollFrom !== null && this.snaps.has(rollFrom)) {
             this.blockedFrame = null;
+            const shownX = { p1: game.p1.x, p2: game.p2.x };   // 巻き戻す前に画面に出ていた位置
             this.restore(game, this.snaps.get(rollFrom));
             const now = this.frame;
             for (let f = rollFrom; f < now; f++) this.simulate(game, f, true);
             this.flush();
+            // 計測
+            const depth = now - rollFrom;
+            this.stats.rollbacks++;
+            this.stats.rolledFrames += depth;
+            this.stats.maxDepth = Math.max(this.stats.maxDepth, depth);
+            // 見た目のなめらかさ：小さなずれは、パッと飛ばさず少しずつ正しい位置へ寄せる（大きく変わった時はそのまま）
+            for (const id of ['p1', 'p2']) {
+                const d = shownX[id] - game[id].x + (this.visOff[id] || 0);
+                this.visOff[id] = Math.abs(d) < this.SMOOTH_MAX ? d : 0;
+            }
+        }
+        // 寄せる分は毎フレーム減らしていく
+        for (const id of ['p1', 'p2']) {
+            const v = (this.visOff[id] || 0) * this.SMOOTH_DECAY;
+            this.visOff[id] = Math.abs(v) < 0.3 ? 0 : v;
         }
 
         // --- 3. 相手の入力が届かず予想しすぎている時は、この刻みは進めずに待つ ---
         //        しばらく届かなければ「相手を待っています」を出し、もっと続けば接続が切れたとみなす
         if (this.frame - this.remoteConfirmed > this.MAX_PREDICT) {
             this.stallCount++;
+            this.stats.stalls++;
             if (this.onStall) this.onStall(performance.now() - this.lastRemoteAt);
             return;
         }
@@ -360,6 +417,11 @@ const NetSim = {
         }
 
         // --- 4. この刻みを計算する ---
+        // 相手から届いた「正しい状態」がちょうどこの刻みのものなら、差し替えてから計算する
+        if (this.pendingResync && this.pendingResync.f === this.frame) {
+            this.restore(game, this.pendingResync.snap);
+            this.pendingResync = null;
+        }
         this.simulate(game, this.frame, false);
         this.forgetBefore(this.frame - this.SNAP_KEEP);
         for (const f of this.snaps.keys()) if (f < this.frame - this.SNAP_KEEP) this.snaps.delete(f);
@@ -370,7 +432,7 @@ const NetSim = {
             // cf+1 の計算前の状態 ＝ cf を計算し終えた状態
             const sum = this.hashSnap(this.snaps.get(cf + 1));
             this.checks.set(cf, sum);
-            this.send({ t: 'sum', f: cf, sum });
+            this.send({ t: 'sum', f: cf, sum, e: this.epoch });
         }
     },
 
@@ -388,6 +450,51 @@ const NetSim = {
         const bySide = { [this.side]: localB, [this.otherSide()]: remoteB };
         const codes = this.toCodes(game, 'p1', bySide.p1).concat(this.toCodes(game, 'p2', bySide.p2));
         this.stepWith(game, codes, { resim, decide: known });
+    },
+
+    /** 部屋を作った側だけ、送る通信に入力の遅らせ方を書き添える */
+    withDelay(msg) {
+        if (this.isHost) msg.d = this.INPUT_DELAY;
+        return msg;
+    },
+
+    /**
+     * ずれの直し（部屋を作った側）：両者の入力が確定している一番新しい刻みの状態を送る。
+     * その刻みより前は、両者とも同じ入力で計算しているので、この状態に合わせれば以後は一致する
+     */
+    sendResync() {
+        if (this.resyncCount >= this.MAX_RESYNC) return;
+        let f = Math.min(this.frame, this.remoteConfirmed + 1);
+        while (f > 0 && !this.snaps.has(f)) f--;
+        if (!this.snaps.has(f)) return;
+        this.resyncCount++;
+        this.epoch++;
+        this.send({ t: 'resync', f, snap: this.snaps.get(f), e: this.epoch });
+        this.clearChecksFrom(f);
+        this.desync = false;
+        console.warn(`オンライン対戦：刻み${f}の状態を相手に送って、ずれを直します`);
+    },
+
+    /** ずれの直し（入った側）：届いた状態に合わせ、そこから今の刻みまで計算し直す */
+    applyResync(msg) {
+        if (this.isHost || !this.game) return;
+        const game = this.game;
+        this.epoch = msg.e || (this.epoch + 1);
+        this.clearChecksFrom(msg.f);
+        this.desync = false;
+        if (msg.f >= this.frame) {          // まだその刻みまで進んでいない → 着いた時に差し替える
+            this.pendingResync = { f: msg.f, snap: msg.snap };
+            return;
+        }
+        this.restore(game, msg.snap);
+        const now = this.frame;
+        for (let f = msg.f; f < now; f++) this.simulate(game, f, true);
+        this.flush();
+        console.warn(`オンライン対戦：刻み${msg.f}の状態に合わせて、ずれを直しました`);
+    },
+
+    clearChecksFrom(f) {
+        for (const k of [...this.checks.keys()]) if (k >= f - 1) this.checks.delete(k);
     },
 
     hashSnap(s) {

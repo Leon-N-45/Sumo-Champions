@@ -35,7 +35,7 @@ const DATA_URLS = {
 // 遊んでいる人が途中で離れても、次の人がタイトルから始められるようにする。
 // 0 にすると無効。
 // ============================================================
-const IDLE_RETURN_SECONDS = 180;
+const IDLE_RETURN_SECONDS = 0;   // 0 = 無操作でタイトルへ戻す仕組みを使わない
 
 // 遠征（オンライン対戦）の仲介サーバー（Cloudflare Workers）。中身は server/signaling
 const ONLINE_SIGNAL_URL = 'https://sumocham-signal.leon-noguchi.workers.dev';

@@ -300,7 +300,7 @@ const CreateScreen = {
             const hasDrawing = this.drawnOver || (!this.parts && !this.isCanvasEmpty());
             if (hasDrawing && !await this.ask('描いた分は消えて、パーツで作った顔に戻ります。\nよろしいですか？', 'パーツに戻る')) return;
             if (this.tool === 'zoom') this.setTool('pen');
-            if (!this.parts) this.parts = FaceParts.defaultRecipe();
+            if (!this.parts) this.parts = FaceParts.randomRecipe();   // 初めてパーツにした時は、おまかせのパーツで始める
             this.drawnOver = false;
             this.faceMode = 'parts';
             this.markDirty();
@@ -643,13 +643,13 @@ const CreateScreen = {
         this.form = { name: '', power: 3, tech: 3, speed: 3, stamina: 3, spirit: 3, reversal: 3, height: 3, weight: 3, aiType: '素直', bgColor: '' };
         document.getElementById('create-name').value = '';
         this.loadFace(null);
-        // 新しく作る時は、まず「パーツで作る」から（描くより始めやすいため）
-        this.parts = FaceParts.defaultRecipe();
+        // 新しく作る時は、まず「自分で描く」から。パーツのタブを押すと、おまかせのパーツで始まる
+        this.parts = null;
         this.partsCat = 'face';
-        this.faceMode = 'parts';
+        this.faceMode = 'draw';
         this.drawnOver = false;
+        this.history = [];
         this.paintFaceMode();
-        this.renderParts();
         this.refresh();
         this.dirty = false;
     },

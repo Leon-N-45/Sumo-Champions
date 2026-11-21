@@ -56,7 +56,8 @@ class TeamGameManager {
         const online = (typeof Online !== 'undefined' && Online.active);
         if (online && !opts.fromNet) {
             // 遠征：相手の枠は触れない。ランダムは端末ごとに抽選結果が変わるので使えない
-            if (player !== Online.side || charId === RANDOM_CHAR_ID) return;
+            // （公式戦・団体戦は「相手を探す」時に自分で抽選してから送るので使える）
+            if (player !== Online.side || (charId === RANDOM_CHAR_ID && !Online.prepick)) return;
         }
         this.state.teams[player][index] = charId;
         this.ui.updateTeamDisplay();
@@ -300,6 +301,11 @@ class TeamGameManager {
                 row.className = `secret-char-row ${isUsed ? 'used-char' : ''}`;
 
                 const imgSrc = charData.img.includes('/') ? charData.img : `assets/img/${charData.img}`;
+
+                // 力士を押すと、その力士のカード（能力）を大きく見られる
+                row.classList.add('can-view');
+                row.title = 'カードを見る';
+                row.addEventListener('click', () => this.ui.showCharDetail(charId));
 
                 row.innerHTML = `
                 <div class="secret-char-icon" style="background-image: url('${imgSrc}')"></div>
@@ -677,9 +683,14 @@ class TeamGameManager {
         const online = (typeof Online !== 'undefined' && Online.active);
         if (online) Online.finalDone = false;
         const rematchCall = online ? "Online.finalAction('team-rematch')" : 'window.teamGame.teamRematch()';
-        html += `<div id="final-btn-container"><button class="btn" onclick="${rematchCall}">同じ条件で再戦</button><button id="auto-top-btn" class="btn">力士選択へ${online ? '' : ' (5)'}</button></div>`;
+        // 公式戦・団体戦は、終わったら遠征の画面へ戻るだけ（レートの変化も出す）
+        const officialFinal = online && Online.mode !== 'friend';
+        html += officialFinal
+            ? `<div id="net-rate-result" class="net-rate-result"></div><div id="final-btn-container"><button id="auto-top-btn" class="btn" onclick="Online.finishAndReturn()">遠征へ戻る</button></div>`
+            : `<div id="final-btn-container"><button class="btn" onclick="${rematchCall}">同じ条件で再戦</button><button id="auto-top-btn" class="btn">力士選択へ${online ? '' : ' (5)'}</button></div>`;
         const matchInfo = document.getElementById('match-info');
         if (matchInfo) matchInfo.innerHTML = html;
+        if (officialFinal && (winner === 'p1' || winner === 'p2')) Online.onMatchFinished(winner);
 
         // ズーム演出の後半で appare.mp3 → 再生終了でボタン表示＋カウントダウン（個人戦と同一）
         setTimeout(() => {
@@ -693,6 +704,7 @@ class TeamGameManager {
                     this.finalAdvanceTimer = null;
                     this.goToTeamSelect('random');
                 };
+                if (officialFinal) return;   // 「遠征へ戻る」だけ
                 if (online) { if (autoBtn) autoBtn.onclick = () => Online.finalAction('team-select'); return; }
                 if (autoBtn) autoBtn.onclick = executeReturn;
                 if (this.finalAdvanceTimer) clearInterval(this.finalAdvanceTimer);

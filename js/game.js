@@ -272,9 +272,10 @@ class GameManager {
         // ランダムは端末ごとに抽選結果が変わってしまうので使えない
         const online = (typeof Online !== 'undefined' && Online.active);
         if (online && !options.fromNet) {
-            if (playerId !== Online.side || charId === RANDOM_CHAR_ID) return;
+            // ランダムはランダムマッチ・公式戦だけ（相手を探す時に抽選する）。フレンドマッチは両者で抽選がずれるので使えない
+            if (playerId !== Online.side || (charId === RANDOM_CHAR_ID && !Online.prepick)) return;
             // 公式戦は強さ50以下の力士だけ
-            if (Online.official && charId !== null && !Online.officialOk(RIKISHI_DATA.find(d => d.id === charId))) {
+            if (Online.official && charId !== null && charId !== RANDOM_CHAR_ID && !Online.officialOk(RIKISHI_DATA.find(d => d.id === charId))) {
                 settings.showToast(`公式戦は強さ${Online.OFFICIAL_LIMIT}以下の力士だけ選べます`);
                 return;
             }
@@ -537,7 +538,8 @@ class GameManager {
             this.state.deuce = false;
         }
         // 遠征のランダムマッチ・公式戦は「先に二勝」の三番勝負
-        this.state.firstTo = (typeof Online !== 'undefined' && Online.active && Online.mode !== 'friend');
+        // 公式戦は「先に二勝」。ランダムマッチは二番勝負＋優勝決定戦（取組数・決定戦の設定どおり）
+        this.state.firstTo = (typeof Online !== 'undefined' && Online.active && Online.mode === 'official');
 
         if (this.state.isTeamMode) {
             this.state.matches = 1; // 団体戦は1取組ずつ進行する
@@ -846,7 +848,11 @@ class GameManager {
 
         // 蓄積した時間が固定ステップ以上ある限り、ロジックを回す
         let steps = 0;
-        while (this.accumulator >= FIXED_STEP) {
+        // 画面の書き換え（約16.7ミリ秒ごと）と計算の刻みは、わずかにずれる。
+        // ずれで「このフレームは計算しない」が起きると、その分だけ操作の反応が1フレーム遅れるので、
+        // 1.5ミリ秒までの不足は待たずに計算する（足りない分は次に持ち越すので、速さは変わらない）
+        const STEP_SLACK = 1.5;
+        while (this.accumulator >= FIXED_STEP - STEP_SLACK) {
             this.updatePhysics(); // ロジック更新メソッドを分離
             this.accumulator -= FIXED_STEP;
 
@@ -1032,7 +1038,12 @@ class GameManager {
 
         if (p.isCPU && p.inashiStumble > 0) {
             p.inashiStumble--;
-            p.x += (2.8 * 1.5) * p.stumbleDir;
+            // 上の番付ほど、俵の手前で踏ん張ってよろけを止める（踏ん張れるかは、いなされた時に決めてある）
+            if (p.stumbleBrake && this.edgeRoom(p, p.stumbleDir) < 12) {
+                p.inashiStumble = 0;
+            } else {
+                p.x += (2.8 * 1.5) * p.stumbleDir;
+            }
             p.el.classList.add('stunned'); return;
         }
 
@@ -1392,6 +1403,9 @@ class GameManager {
             const stumbleDur = cfg('ACTION.STUMBLE_DURATION', 40);
             opp.inashiStumble = stumbleDur;
             opp.stumbleDir = (opp.x < p.x) ? -1 : 1;
+            // 俵で踏ん張れるか（判断の正確さ＝上の番付ほど踏ん張れる。横綱はほぼ必ず）
+            const acc = (CONFIG.AI && CONFIG.AI['LV' + (opp.cpuLevel || 3) + '_ACCURACY']) ?? 0.5;
+            opp.stumbleBrake = Math.random() < acc;
         }
     }
 
@@ -1861,6 +1875,15 @@ class GameManager {
         }
     }
 
+    /** 土俵を割るまでの残り距離（dir: -1=左の俵 / +1=右の俵）。isOutOfRing と同じ測り方 */
+    edgeRoom(p, dir) {
+        const leftLimit = cfg('GAME_RULES.RING_EDGE_LEFT', 115);
+        const rightLimit = cfg('GAME_RULES.RING_EDGE_RIGHT', 1085);
+        const scaleObj = p.getPhysiqueScale ? p.getPhysiqueScale() : {x: 1.0, y: 1.0};
+        const centerX = p.x + 65, footSpread = 40 * scaleObj.x;
+        return dir < 0 ? (centerX - footSpread) - leftLimit : rightLimit - (centerX + footSpread);
+    }
+
     /** 力士の足が土俵の外に出ているか */
     isOutOfRing(p) {
         const leftLimit = cfg('GAME_RULES.RING_EDGE_LEFT', 115);
@@ -2092,7 +2115,7 @@ class GameManager {
         const hitDist = cfg('GAME_RULES.HIT_DIST', 100);
         const isContact = Math.abs(this.p1.x - this.p2.x) <= (hitDist + 20);
 
-        if (winner.actionType === 'inashi') {
+        if (winner.actionType === 'inashi' || (reason === 'ringout' && loser.inashiStumble > 0)) {
             kimarite = "突き落とし";
         } else {
             if (reason === 'ringout') {

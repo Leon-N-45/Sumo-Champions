@@ -9,6 +9,8 @@ class SettingsManager {
             display: { screenSize: 'responsive' },
             // 操作方法。'kbmouse'=キーボードとマウス / 'keyboard'=キーボードのみ / 'gamepad'=コントローラ
             inputMode: { p1: 'kbmouse', p2: 'kbmouse' },
+            // 遠征（オンライン）の入力の遅らせ方。'reaction'=反応優先 / 'smooth'=見た目優先
+            netDelay: 'reaction',
             controls: {
                 p1: { l: 'KeyA', r: 'KeyD', u: 'KeyW', d: 'KeyS' },
                 p2: { l: 'ArrowLeft', r: 'ArrowRight', u: 'ArrowUp', d: 'ArrowDown' }
@@ -169,6 +171,8 @@ class SettingsManager {
 
     updateUI() {
         this.syncVolumeUI();
+        const nd = document.getElementById('setting-net-delay');
+        if (nd) nd.value = this.current.netDelay || 'reaction';
         this.updateInputModeUI();
 
         this.updateKeyBtn('p1', 'u'); this.updateKeyBtn('p1', 'd'); this.updateKeyBtn('p1', 'l'); this.updateKeyBtn('p1', 'r');

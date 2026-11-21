@@ -71,7 +71,7 @@ body.online-mode #team-select-screen .char-random { opacity: 0.35; pointer-event
 
 /* --- 遠征の画面：遠征名・番付・レート --- */
 .net-profile {
-    position: absolute; top: 175px; left: 50%; transform: translateX(-50%);
+    position: absolute; top: 28px; right: 40px;
     display: flex; align-items: center; gap: 24px;
     background: #fdfbf5; border: 3px solid #111; border-radius: 8px; padding: 10px 22px;
     box-shadow: 4px 4px 0 rgba(0,0,0,0.15); white-space: nowrap;
@@ -92,7 +92,8 @@ body.prepick-mode .prepick-bar {
     position: absolute; top: 210px; left: 50%; transform: translateX(-50%); z-index: 60;
     display: flex; align-items: center; gap: 20px;
 }
-.prepick-title { font-family: 'tamanegi', sans-serif; font-size: 2rem; color: #745399; white-space: nowrap; }
+/* 見出し（ランダムマッチ・公式戦）は出さず、中央に「相手を探す」だけを置く */
+.prepick-title { display: none; }
 .prepick-search { font-size: 1.5rem; padding: 8px 36px; }
 .prepick-search:disabled { opacity: 0.4; cursor: default; }
 /* 相手のカードは伏せる */
@@ -105,7 +106,8 @@ body.prepick-mode .prepick-hidden-card {
 }
 .prepick-q { font-family: 'tamanegi', sans-serif; font-size: 10rem; color: #fff; line-height: 1; text-shadow: 4px 4px 0 #745399; }
 .prepick-note { color: #fff; font-weight: bold; font-size: 1.4rem; text-align: center; line-height: 1.6; }
-body.prepick-mode #char-select-screen .char-random { opacity: 0.35; pointer-events: none; }
+/* ランダムマッチ・公式戦はランダムも選べる（相手を探す時に、ここで力士を抽選する）。フレンドマッチは使えないまま */
+body.online-mode.prepick-mode #char-select-screen .char-random { opacity: 1; pointer-events: auto; }
 
 /* 三番勝負の後のレートの変化 */
 .net-rate-result { position: relative; z-index: 10; margin-top: 10px; color: #fff; font-weight: bold; font-size: 1.5rem; text-shadow: 2px 2px 0 #000; }
@@ -177,3 +179,93 @@ body.online-mode .net-conn-badge { display: block; }
 /* --- 遠征中の力士選択：CPU の切り替えとランダムは使えない --- */
 body.online-mode .cpu-switch-container { display: none !important; }
 body.online-mode #char-select-screen .char-random { opacity: 0.35; pointer-events: none; }
+
+/* ランダムマッチ・公式戦は取組数などが決まっているので、相撲形式のボタンは出さない */
+body.prepick-mode #sumo-format-container .format-rules-btn,
+body.prepick-mode #format-popover { display: none !important; }
+
+/* --- 遠征の画面：非公式戦（友人戦・誰でも戦）と公式戦（個人戦・団体戦）に分けて並べる --- */
+.net-menu.net-menu-groups { top: 320px; align-items: flex-start; gap: 70px; }
+.net-group { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.net-group-title {
+    font-family: 'tamanegi', sans-serif; font-size: 2rem; color: #745399; letter-spacing: 0.1em;
+    border-bottom: 3px solid #745399; padding: 0 24px 2px;
+}
+.net-group-btns { display: flex; gap: 24px; }
+.net-menu-groups ~ .net-note { top: 540px; line-height: 1.8; font-size: 1.05rem; }
+
+/* 部屋名の横：個人戦・団体戦それぞれの番付とレート */
+.net-rank-kind { display: inline-block; margin-right: 18px; }
+.net-rank-label { font-weight: bold; color: #745399; margin-right: 6px; }
+
+/* --- 公式戦・団体戦：自分の3人を決めてから相手を探す（相手の組は見えない） --- */
+.team-prepick-bar { display: none; }
+body.prepick-mode #team-select-screen .team-prepick-bar {
+    display: flex; position: absolute; top: 200px; left: 50%; transform: translateX(-50%); z-index: 60;
+}
+body.prepick-mode #team-select-screen .p2-team-panel { position: relative; }
+body.prepick-mode #team-select-screen .p2-team-panel > * { visibility: hidden; }
+body.prepick-mode #team-select-screen .p2-team-panel::after {
+    content: '？'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-family: 'tamanegi', sans-serif; font-size: 8rem; color: #fff; text-shadow: 4px 4px 0 #745399;
+    background: repeating-linear-gradient(45deg, #2a2a2a, #2a2a2a 14px, #333 14px, #333 28px);
+    border: 6px solid #111; border-radius: 14px;
+}
+body.online-mode.prepick-mode #team-select-screen .char-random { opacity: 1; pointer-events: auto; }
+body.prepick-mode #team-format-popover { display: none !important; }
+
+/* --- 出場する力士を選ぶ画面：力士を押すとカードが見られる --- */
+.secret-char-row.can-view { cursor: pointer; }
+.secret-char-row.can-view:hover { filter: brightness(1.08); outline: 2px solid #745399; }
+.secret-view-hint { font-size: 0.9rem; font-weight: bold; color: #ddd; text-align: center; margin-top: 6px; }
+
+/* 公式戦のボタンの下：レートと番付 */
+.net-btn-col { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.net-rate-under { font-family: 'Yuji Syuku', serif; font-weight: bold; font-size: 1.15rem; line-height: 1.6; text-align: center; color: #333; }
+
+/* 部屋名の「編集」ボタン（鉛筆のアイコン。編集中はチェックのアイコン） */
+.net-name-edit {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; padding: 0; margin-left: -12px;
+    border: 2px solid #111; border-radius: 50%; background: #fff; color: #111; cursor: pointer;
+}
+.net-name-edit:hover { background: #745399; color: #fff; }
+.net-name-edit:disabled { opacity: 0.4; cursor: default; }
+#net-player-name[readonly] { background: transparent; border-color: transparent; cursor: default; }
+
+/* 部屋名の登録 */
+.net-register-overlay {
+    display: none; position: absolute; inset: 0; z-index: 500;
+    background: rgba(0, 0, 0, 0.55); align-items: center; justify-content: center;
+}
+.net-register-overlay.active { display: flex; }
+.net-register-box {
+    background: #fffaf0; border: 4px solid #111; border-radius: 14px; padding: 30px 44px;
+    display: flex; flex-direction: column; align-items: center; gap: 16px; box-shadow: 0 10px 24px rgba(0,0,0,0.5);
+}
+.net-register-title { font-family: 'tamanegi', sans-serif; font-size: 2.2rem; color: #745399; }
+.net-register-desc { font-weight: bold; color: #444; text-align: center; line-height: 1.7; }
+#net-register-name { font-size: 1.6rem; padding: 6px 12px; width: 320px; text-align: center; border: 3px solid #745399; border-radius: 8px; }
+.net-register-error { min-height: 1.4em; color: #d22; font-weight: bold; }
+
+/* 公式戦：取組要項のリンクとポップアップ */
+.net-rules-link { margin-top: 6px; font-weight: bold; font-size: 1.05rem; color: #745399; text-decoration: underline; cursor: pointer; }
+.net-rules-link:hover { color: #4f3570; }
+.net-rules-box { position: relative; max-width: 900px; align-items: stretch; padding: 28px 40px 30px; gap: 10px; }
+.net-rules-box .net-register-title { text-align: center; }
+.net-rules-close { position: absolute; top: 12px; right: 18px; cursor: pointer; font-weight: bold; font-size: 1.3rem; }
+.net-rules-cols { display: flex; gap: 40px; }
+.net-rules-col { flex: 1; }
+.net-rules-head { font-family: 'tamanegi', sans-serif; font-size: 1.5rem; color: #745399; border-bottom: 2px solid #745399; margin-bottom: 4px; }
+.net-rules-box ul { margin: 0; padding-left: 1.3em; font-weight: bold; color: #333; line-height: 1.75; }
+
+/* 遠征中の通信の状態（画面の右下に小さく） */
+.net-stats {
+    display: none; position: fixed; right: 10px; bottom: 8px; z-index: 900;
+    background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 12px; font-weight: bold;
+    padding: 3px 8px; border-radius: 6px; cursor: pointer; font-family: 'M PLUS Rounded 1c', sans-serif;
+}
+body.online-mode .net-stats.show { display: block; }
+.net-stats.hidden { opacity: 0.15; }
+.net-stats .bad { color: #ff8a8a; }
+.net-stats .ok { color: #9be79b; }
