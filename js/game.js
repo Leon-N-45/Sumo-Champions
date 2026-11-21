@@ -65,6 +65,13 @@ class GameManager {
         this.setupInputListeners();
         this.loop = this.loop.bind(this);
         requestAnimationFrame(this.loop);
+        // 遠征中に画面の書き換え（requestAnimationFrame）が止まった時の代わり。
+        // ウィンドウを切り替えた・最小化した時もゲームを進めて、相手を待たせない（アプリ版で効く）
+        this.lastFrameAt = 0;
+        setInterval(() => {
+            const online = (typeof NetSim !== 'undefined' && NetSim.online);
+            if (online && performance.now() - this.lastFrameAt > 60) this.frame(performance.now());
+        }, 1000 / 60);
     }
 
     setupInputListeners() {
@@ -799,6 +806,12 @@ class GameManager {
 
     loop(timestamp){
         requestAnimationFrame(this.loop);
+        this.frame(timestamp);
+    }
+
+    /** 1回分の画面の更新（計算を必要な刻みだけ進めて描く） */
+    frame(timestamp){
+        this.lastFrameAt = performance.now();
 
         // 初回呼び出し時の初期化
         if (!this.lastTime) this.lastTime = timestamp;

@@ -39,13 +39,29 @@ const Online = {
         if (curtain) {
             curtain.classList.add('active');
             setTimeout(swap, 400);
-            setTimeout(() => curtain.classList.remove('active'), 900);
+            // 幕のアニメーション（1.5秒）が流れ切ってから外す（途中で外すと、幕がその場で消えてしまう）
+            setTimeout(() => curtain.classList.remove('active'), 1500);
         } else swap();
     },
 
+    EXPEDITION_BGM: 'bgm12.mp3',   // 遠征の画面で流す曲
+
     openExpedition() {
+        // タイトルの個人戦・団体戦と同じく、押した時に掛け声を鳴らす
+        if (typeof SoundFX !== 'undefined') {
+            const voice = new Audio(`assets/se/${SoundFX.pickTitleVoice()}.mp3`);
+            voice.volume = SoundFX.voiceVolume;
+            voice.play().catch(() => {});
+        }
         this.show('expedition-screen');
+        // 幕が開ききったら遠征の曲
+        setTimeout(() => this.playExpeditionBgm(), 1500);   // 幕が開ききってから（ほかのモードと同じ1.5秒）
         this.ensurePlayer();   // 部屋名・番付・レートを出す（初めてなら部屋名の登録を促す）
+    },
+
+    /** 遠征の画面の曲（同じ曲が流れていれば、そのまま続ける） */
+    playExpeditionBgm() {
+        if (typeof SoundFX !== 'undefined') SoundFX.playLoopBGM(this.EXPEDITION_BGM);
     },
 
     openFriendMatch() {
@@ -564,6 +580,7 @@ const Online = {
             document.getElementById('start-screen').classList.remove('active');
             document.getElementById('expedition-screen').classList.add('active');
             if (typeof initFastScale === 'function') initFastScale();
+            this.playExpeditionBgm();
             this.ensurePlayer();
         };
         wait();

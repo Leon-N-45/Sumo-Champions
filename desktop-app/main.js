@@ -17,6 +17,10 @@ protocol.registerSchemesAsPrivileged([{
 
 // タイトルのBGMやボイスを、クリック前から鳴らせるようにする
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+// 別のウィンドウを見ている・最小化している時もゲームを止めない（遠征で相手を待たせないため）
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 
 // 二重に起動したら、新しく開かずに今のウィンドウを前に出す
 if (!app.requestSingleInstanceLock()) {
@@ -54,7 +58,7 @@ if (!app.requestSingleInstanceLock()) {
             backgroundColor: '#000000',
             icon: path.join(__dirname, 'icon.png'),
             title: 'スモチャン',
-            webPreferences: { contextIsolation: true }
+            webPreferences: { contextIsolation: true, backgroundThrottling: false }
         });
 
         // F11 で全画面の切り替え（Esc はゲームの中断メニューに使うため割り当てない）

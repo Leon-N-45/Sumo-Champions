@@ -152,6 +152,18 @@ const SoundFX = {
         this.bgmAudio.play().catch(e => console.warn("選曲BGM再生エラー:", e));
     },
 
+    /** 決まった1曲をくり返し流す（遠征の画面など）。同じ曲が流れていれば何もしない */
+    playLoopBGM(file) {
+        if (this.bgmAudio && !this.bgmAudio.paused && this.bgmAudio.dataset && this.bgmAudio.dataset.file === file) return;
+        this.stopBGM();
+        const a = new Audio(`assets/bgm/${file}`);
+        a.dataset.file = file;
+        a.loop = true;
+        this.bgmAudio = a;
+        this.updateBGMVolume();
+        a.play().catch(e => console.warn('BGM再生エラー:', e));
+    },
+
     updateBGMVolume() {
         if (this.bgmAudio) {
             this.bgmAudio.volume = this.bgmVolume * 0.66;

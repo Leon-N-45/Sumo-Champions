@@ -1957,7 +1957,6 @@ class UIManager {
                     <span id="player-time" class="player-time">0:00</span>
                     <input id="player-seek" class="player-seek-bar" type="range" min="0" max="1000" value="0" step="1" ${dis}>
                     <span id="player-dur" class="player-time">0:00</span>
-                    <button class="btn confirm-btn" onclick="game.ui.closeBgmModal()">閉じる</button>
                 </div>
             `;
             // スライダーを動かすと、その位置から流す
